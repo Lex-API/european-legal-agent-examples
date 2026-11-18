@@ -59,15 +59,22 @@ on FREE, and webhooks need a paid plan (the change monitor's polling mode does n
   numbered `S1`, `S2`, ... and those ids are the only way the model can refer to them.
 - **The model returns structure, not prose.** It submits quotes (source id + excerpt) and
   statements (text + source ids) through a tool call.
-- **Code checks the draft** ([`shared/grounding.ts`](shared/grounding.ts) and its Python twin).
-  A draft is rejected if it cites an id that was not retrieved; if a quote is shorter than three
-  words or is not a verbatim excerpt of its source; if a quotation inside a statement is not
-  verbatim in a source that statement cites, or a quotation mark is left open; or if a quote or
-  statement is not one line of plain text. Statements with no source are removed and listed.
+- **Code checks the draft** ([`shared/grounding.ts`](shared/grounding.ts) and its Python twin;
+  both run the cases in [`shared/grounding-vectors.json`](shared/grounding-vectors.json)). A draft
+  is rejected if it cites an id that was not retrieved; if a quote is shorter than three words or
+  is not a verbatim excerpt, on word boundaries, of its source; if a quotation inside a statement
+  is verbatim neither in a source that statement cites nor in the user's own input, or a
+  quotation mark is left open; if a quote or statement contains a line break, a control or
+  format character or a leading block marker; if a statement contains an HTML character
+  reference, a citation marker or a foreign URL; or if it exceeds the size caps (12 quotes, 12
+  statements, 1,200 and 600 characters). Statements with no source, and statements that match an
+  example's conclusion filter, are removed and counted. The example READMEs give the rules in
+  full, including which quotation-mark styles are recognised.
 - **Output keeps law and model text apart.** Quoted source text and model-written text are in
-  separate, labelled sections; Markdown in model-written text is escaped, so it cannot imitate
-  the quoted section; and every source line has the CELEX number, article id or paragraph, ECLI
-  for case law, and a EUR-Lex link.
+  separate, labelled sections. A quote is printed with the source's own characters. Model-written
+  text that is printed (statements, search queries) goes through one escaping function, so it
+  cannot imitate the quoted section; removed statements are never printed. Every source line has
+  the CELEX number, article id or paragraph, ECLI for case law, and a EUR-Lex link.
 - **Versions are labelled.** A consolidated text is marked as having no legal force, with the
   authentic act named. "The text in force on a date" is stated only when the API reports
   `asOfResolved: true`.
@@ -97,8 +104,8 @@ fixtures shaped like the API's responses, and a scripted stand-in for the model.
 run against any base URL that does not start with `http://127.0.0.1:`.
 
 That means the code paths, the request shapes the SDKs send, the grounding rules and webhook
-signature verification are tested. The examples have **not** been run by these tests against the
-LexAPI service or a real model, so real-world retrieval quality and model behaviour are not
+signature verification are tested. The examples have **not** been run against the LexAPI
+service or a real model at all, so real-world retrieval quality and model behaviour are not
 covered. The sample outputs in the READMEs come from dry runs and are illustrative.
 
 ```bash
@@ -119,7 +126,7 @@ scripts/    record-fixtures (calls the real API; never run by tests or CI)
 The fixtures in `offline/fixtures` are synthetic: placeholder texts and identifiers that cannot be
 mistaken for real ones, in the shapes the SDKs type. To compare them with what the API returns
 today, `npm run record-fixtures -- --i-have-a-key` makes the calls the examples make with your own
-`LEXAPI_API_KEY` (about 35-50 credits) and writes the responses to `fixtures-recorded/`. That
+`LEXAPI_API_KEY` (about 30-50 credits) and writes the responses to `fixtures-recorded/`. That
 folder is git-ignored: the files contain real legal texts and your account's plan and usage
 figures. The script refuses to run without the flag, inside a test run, or on a CI runner.
 

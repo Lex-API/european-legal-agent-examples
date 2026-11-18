@@ -5,31 +5,40 @@
  *   - `quotes`     - excerpts it wants shown, each naming the source it came from;
  *   - `statements` - its own sentences, each naming the sources that support it.
  *
- * `validateDraft` then enforces, in code:
- *   1. every source id in the draft was actually retrieved in this run        -> otherwise REJECT;
- *   2. every quote is at least three words long and a verbatim excerpt of the
- *      source it names                                                        -> otherwise REJECT;
- *   3. every quotation inside a statement (two words or more, or eight
- *      characters or more, in any style of quotation marks) is verbatim in a
- *      source that statement cites; quotation marks must be balanced          -> otherwise REJECT;
- *   4. quotes and statements are single lines of plain text: no line breaks,
- *      no leading Markdown block marker (heading, blockquote, list, table,
- *      code fence)                                                            -> otherwise REJECT;
- *   5. a statement that cites no source is removed and reported;
- *   6. a statement matching a `forbidden` pattern is removed and reported.
+ * `validateDraft` REJECTS the draft (throws `GroundingError`) when:
+ *   1. a quote or statement cites a source id that was not retrieved in this run;
+ *   2. a quote is not a verbatim excerpt of the source it names, or is shorter
+ *      than three words;
+ *   3. a quotation inside a statement (two words or more, or eight characters
+ *      or more) is verbatim neither in a source that statement cites nor in the
+ *      user's own input, or a quotation mark is left open;
+ *   4. a quote or statement breaks the rules for model text in `text.ts`
+ *      (line breaks, control characters, leading block markers, length; for
+ *      statements also HTML character references and `[S1]`-style markers);
+ *   5. a statement contains a URL that is not the URL of a source it cites;
+ *   6. there are more than 12 quotes or more than 12 statements.
  *
- * "Verbatim" is checked after collapsing whitespace, unifying quotation-mark
- * styles and dropping soft hyphens, on both sides.
+ * It REMOVES, and counts without repeating them:
+ *   7. statements that cite no source;
+ *   8. statements that match the conclusion filter (`conclusions.ts`), when
+ *      the caller passes patterns.
  *
- * "Reject" throws `GroundingError`; the agent loop decides what to do next
- * (the examples retry once, then fall back to showing the sources only).
+ * "Verbatim" means: after normalisation (see `normalise`), the words appear
+ * in the source in the same order, starting and ending on a word boundary.
+ * Punctuation and ellipses at the two ends of a quotation are ignored, and
+ * the case of its first character may differ. A quote is printed with the
+ * source's own characters, not the model's.
  *
- * This checks that citations are real and excerpts are verbatim. It cannot
- * check that an excerpt is quoted in context, or that a model-written
- * statement is a correct reading of the source - that is why the rendered
- * output keeps quoted text and model text visibly apart, and escapes
- * Markdown in everything the model wrote.
+ * The examples retry a rejected draft once, then show the sources only.
+ *
+ * What this does not check: that an excerpt is quoted in context, or that a
+ * model-written statement is a correct reading of the source it cites. That
+ * is why the output keeps quoted text and model text in separate sections.
  */
+import { statesConclusion } from "./conclusions.ts";
+import { findVerbatim, modelTextProblem, normalise, plainText, quotationsIn, trimQuotation, urlsIn, wordCount, length } from "./text.ts";
+
+export { normalise, plainText } from "./text.ts";
 
 /** One retrieved piece of text the model may quote or cite. */
 export interface Source {
@@ -71,17 +80,19 @@ export interface Draft {
   statements: DraftStatement[];
 }
 
-export interface RemovedStatement {
-  text: string;
-  reason: "uncited" | "forbidden";
+export interface GroundedStatement extends DraftStatement {
+  /** The statement quotes words from the user's own input (not from a source). */
+  quotesUserInput: boolean;
 }
 
 /** A draft that passed validation. */
 export interface GroundedAnswer {
   status: "answered" | "no_support";
+  /** `text` is the excerpt as it stands in the source. */
   quotes: DraftQuote[];
-  statements: DraftStatement[];
-  removed: RemovedStatement[];
+  statements: GroundedStatement[];
+  /** How many statements were removed, by reason. Their text is not kept. */
+  removed: { uncited: number; conclusion: number };
 }
 
 export class GroundingError extends Error {
@@ -94,135 +105,106 @@ export class GroundingError extends Error {
 }
 
 export interface ValidateOptions {
-  /** Statements matching any of these are removed (e.g. wording that states a legal conclusion). */
-  forbidden?: RegExp[];
+  /** Conclusion patterns (see `conclusions.ts`); statements matching one are removed. */
+  conclusionPatterns?: string[];
+  /** The user's own input. A statement may quote it; such a quotation is not presented as law. */
+  userText?: string;
 }
 
-/**
- * Collapse whitespace, unify quotation-mark styles and drop soft hyphens, so
- * that line wrapping and typography do not break a verbatim match.
- */
-export function normalise(text: string): string {
-  return text
-    .replace(/\u00AD/g, "")
-    .replace(/[\u2018\u2019\u201A\u201B\u2039\u203A]/g, "'")
-    .replace(/[\u201C\u201D\u201E\u201F\u00AB\u00BB]/g, '"')
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-/** Why a piece of model text may not be rendered as one plain line, or `undefined` if it may. */
-function shapeProblem(text: string, kind: "quote" | "statement"): string | undefined {
-  if (/[\n\r\u2028\u2029]/.test(text)) return "contains a line break";
-  const start = text.trimStart();
-  // A quote may open with a paragraph number ("1. The controller ..."): laws are written that way.
-  const markers = kind === "quote" ? /^(#|>|\||```|~~~|[-*+]\s)/ : /^(#|>|\||```|~~~|[-*+]\s|\d+[.)]\s)/;
-  if (markers.test(start)) return "starts with a Markdown block marker";
-  return undefined;
-}
-
-const WORD_CHAR = /[\p{L}\p{N}]/u;
-
-/**
- * The quotations inside a statement, in any style of quotation marks (the
- * text is normalised first, so only `"` and `'` remain). A `'` between two
- * letters, or closing nothing, is an apostrophe ("provider's", "subjects'").
- * Returns `undefined` when a quotation mark is left open.
- */
-export function embeddedQuotations(statement: string): string[] | undefined {
-  const text = normalise(statement);
-  const spans: string[] = [];
-  let open: { mark: string; at: number } | undefined;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (ch !== '"' && ch !== "'") continue;
-    const before = text[i - 1] ?? " ";
-    const after = text[i + 1] ?? " ";
-    if (open) {
-      if (ch !== open.mark) continue;
-      if (ch === "'" && WORD_CHAR.test(before) && WORD_CHAR.test(after)) continue; // apostrophe inside a word
-      spans.push(text.slice(open.at + 1, i).trim());
-      open = undefined;
-    } else if (ch === '"') {
-      open = { mark: ch, at: i };
-    } else if (!WORD_CHAR.test(before) && after !== " ") {
-      open = { mark: ch, at: i }; // a single quote opens only at the start of a word
-    }
-  }
-  return open ? undefined : spans;
-}
+export const MAX_QUOTES = 12;
+export const MAX_STATEMENTS = 12;
+export const MIN_QUOTE_WORDS = 3;
 
 /** Quotations long enough to carry meaning: two words or more, or eight characters or more. */
 function mustBeVerbatim(quotation: string): boolean {
-  return quotation.length >= 8 || quotation.split(" ").filter(Boolean).length >= 2;
+  return length(quotation) >= 8 || wordCount(quotation) >= 2;
 }
 
-const MIN_QUOTE_WORDS = 3;
-
 export function validateDraft(draft: Draft, sources: Source[], options: ValidateOptions = {}): GroundedAnswer {
-  if (draft.status === "no_support") {
-    return { status: "no_support", quotes: [], statements: [], removed: [] };
-  }
+  const none = { uncited: 0, conclusion: 0 };
+  if (draft.status === "no_support") return { status: "no_support", quotes: [], statements: [], removed: none };
 
   // Normalise each source once; drafts can carry many quotes.
-  const byId = new Map(sources.map((s) => [s.id, normalise(s.text)]));
+  const texts = new Map(sources.map((s) => [s.id, normalise(s.text)]));
+  const urls = new Map(sources.map((s) => [s.id, s.url]));
+  const userText = normalise(options.userText ?? "");
   const violations: string[] = [];
+  if (draft.quotes.length > MAX_QUOTES) violations.push(`more than ${MAX_QUOTES} quotes`);
+  if (draft.statements.length > MAX_STATEMENTS) violations.push(`more than ${MAX_STATEMENTS} statements`);
 
   const quotes: DraftQuote[] = [];
-  for (const quote of draft.quotes) {
-    const sourceText = byId.get(quote.source);
+  for (const quote of draft.quotes.slice(0, MAX_QUOTES)) {
+    const sourceText = texts.get(quote.source);
     if (sourceText === undefined) {
       violations.push(`quote cites "${quote.source}", which was not retrieved`);
       continue;
     }
-    const wanted = normalise(quote.text);
-    const shape = shapeProblem(quote.text.trim(), "quote");
-    if (shape) {
-      violations.push(`quote from ${quote.source} ${shape}; a quote is one line of plain text`);
-    } else if (wanted.split(" ").filter(Boolean).length < MIN_QUOTE_WORDS) {
-      violations.push(`quote from ${quote.source} is shorter than ${MIN_QUOTE_WORDS} words`);
-    } else if (!sourceText.includes(wanted)) {
-      violations.push(`quote from ${quote.source} is not a verbatim excerpt of that source`);
-    } else {
-      quotes.push({ source: quote.source, text: wanted });
+    const problem = modelTextProblem(quote.text, "quote");
+    if (problem) {
+      violations.push(`quote from ${quote.source} ${problem}`);
+      continue;
     }
+    // A model often wraps the excerpt in quotation marks or ends it with "..."; neither is part of the excerpt.
+    let wanted = trimQuotation(normalise(quote.text));
+    if (wanted.length >= 2 && wanted.startsWith('"') && wanted.endsWith('"')) wanted = trimQuotation(wanted.slice(1, -1));
+    if (wordCount(wanted) < MIN_QUOTE_WORDS) {
+      violations.push(`quote from ${quote.source} is shorter than ${MIN_QUOTE_WORDS} words`);
+      continue;
+    }
+    const excerpt = findVerbatim(sourceText, wanted);
+    if (excerpt === undefined) {
+      violations.push(`quote from ${quote.source} is not a verbatim excerpt of that source (whole words, in order)`);
+      continue;
+    }
+    quotes.push({ source: quote.source, text: excerpt });
   }
 
-  const kept: DraftStatement[] = [];
-  const removed: RemovedStatement[] = [];
-  for (const statement of draft.statements) {
+  const kept: GroundedStatement[] = [];
+  const removed = { ...none };
+  for (const statement of draft.statements.slice(0, MAX_STATEMENTS)) {
     const ids = [...new Set(statement.sources)];
-    const unknown = ids.filter((id) => !byId.has(id));
+    const unknown = ids.filter((id) => !texts.has(id));
     if (unknown.length > 0) {
       violations.push(`statement cites ${unknown.map((id) => `"${id}"`).join(", ")}, which was not retrieved`);
       continue;
     }
-    const shape = shapeProblem(statement.text.trim(), "statement");
-    if (shape) {
-      violations.push(`a statement ${shape}; each statement is one line of plain text`);
+    if (ids.length === 0) {
+      removed.uncited++;
+      continue;
+    }
+    const problem = modelTextProblem(statement.text, "statement");
+    if (problem) {
+      violations.push(`a statement ${problem}`);
       continue;
     }
     const text = normalise(statement.text);
-    if (ids.length === 0) {
-      removed.push({ text, reason: "uncited" });
+    if (options.conclusionPatterns && statesConclusion(text, options.conclusionPatterns)) {
+      removed.conclusion++;
       continue;
     }
-    if (options.forbidden?.some((pattern) => pattern.test(text))) {
-      removed.push({ text, reason: "forbidden" });
+    const foreignUrl = urlsIn(text).find((url) => !ids.some((id) => urls.get(id) === url));
+    if (foreignUrl !== undefined) {
+      violations.push("a statement contains a URL that is not the URL of a source it cites");
       continue;
     }
-    const quotations = embeddedQuotations(text);
+    const quotations = quotationsIn(text);
     if (quotations === undefined) {
       violations.push("a statement has an unbalanced quotation mark");
       continue;
     }
-    const cited = ids.map((id) => byId.get(id) ?? "");
-    const invented = quotations.filter(mustBeVerbatim).find((q) => !cited.some((source) => source.includes(q)));
+    const cited = ids.map((id) => texts.get(id) ?? "");
+    let quotesUserInput = false;
+    let invented: string | undefined;
+    for (const quotation of quotations.map(trimQuotation).filter(mustBeVerbatim)) {
+      if (cited.some((source) => findVerbatim(source, quotation) !== undefined)) continue;
+      if (findVerbatim(userText, quotation) !== undefined) quotesUserInput = true;
+      else invented ??= quotation;
+    }
     if (invented !== undefined) {
-      violations.push(`statement contains a quotation that is not in the sources it cites: "${invented}"`);
+      violations.push(`a statement contains a quotation that is not in the sources it cites (whole words, in order): "${invented}"`);
       continue;
     }
-    kept.push({ text, sources: ids });
+    kept.push({ text, sources: ids, quotesUserInput });
   }
 
   if (violations.length > 0) throw new GroundingError(violations);
@@ -242,7 +224,8 @@ export const DRAFT_SCHEMA = {
     },
     quotes: {
       type: "array",
-      description: "Verbatim excerpts copied character for character from one source: one line each, at least three words.",
+      description:
+        "At most 12 verbatim excerpts, each copied character for character from one source: one line, whole words, 3 words to 1,200 characters.",
       items: {
         type: "object",
         properties: {
@@ -255,7 +238,8 @@ export const DRAFT_SCHEMA = {
     },
     statements: {
       type: "array",
-      description: "Your own sentences, one plain-text line each (no Markdown, no line breaks). Each lists the source ids that support it.",
+      description:
+        "At most 12 of your own sentences, one plain-text line of at most 600 characters each (no Markdown, no line breaks, no URLs, no [S1] markers in the text). Each lists the source ids that support it.",
       items: {
         type: "object",
         properties: {
@@ -327,18 +311,18 @@ export function citation(source: Source): string {
   return parts.join(" - ");
 }
 
-/**
- * Escape Markdown control characters in text the model wrote, so it renders
- * as literal characters: it cannot open a heading, a blockquote, a link or a
- * citation marker of its own.
- */
-export function escapeMarkdown(text: string): string {
-  return normalise(text).replace(/[\\`*_#>|[\]<~]/g, "\\$&");
+/** One model-written statement as a list item, followed by its citation markers. */
+export function renderStatement(statement: GroundedStatement): string {
+  const note = statement.quotesUserInput ? " (the quoted words are from your input, not from a source)" : "";
+  return `- ${plainText(statement.text)} ${statement.sources.map((id) => `[${id}]`).join("")}${note}`;
 }
 
-/** One model-written statement as a list item, followed by its citation markers. */
-export function renderStatement(statement: DraftStatement): string {
-  return `- ${escapeMarkdown(statement.text)} ${statement.sources.map((id) => `[${id}]`).join("")}`;
+/** What the check removed: counts and reasons only - the removed text is never repeated. */
+export function renderRemoved(removed: GroundedAnswer["removed"]): string[] {
+  const lines: string[] = [];
+  if (removed.uncited > 0) lines.push(`- ${removed.uncited} statement(s) removed: cited no source.`);
+  if (removed.conclusion > 0) lines.push(`- ${removed.conclusion} statement(s) removed: matched the conclusion filter.`);
+  return lines;
 }
 
 export interface RenderHeadings {
@@ -359,7 +343,7 @@ export function renderAnswer(answer: GroundedAnswer, sources: Source[], headings
   if (answer.quotes.length === 0) lines.push("_The model selected no excerpts._", "");
   for (const quote of answer.quotes) {
     used.add(quote.source);
-    lines.push(`> "${escapeMarkdown(quote.text)}" [${quote.source}]`, "");
+    lines.push(`> "${plainText(quote.text)}" [${quote.source}]`, "");
   }
 
   lines.push(`## ${headings.statements}`, "");
@@ -370,14 +354,8 @@ export function renderAnswer(answer: GroundedAnswer, sources: Source[], headings
   }
   if (answer.statements.length > 0) lines.push("");
 
-  if (answer.removed.length > 0) {
-    lines.push("## Removed by the grounding check", "");
-    for (const item of answer.removed) {
-      const why = item.reason === "uncited" ? "cited no source" : "stated a conclusion this example does not make";
-      lines.push(`- (${why}) ${escapeMarkdown(item.text)}`);
-    }
-    lines.push("");
-  }
+  const removed = renderRemoved(answer.removed);
+  if (removed.length > 0) lines.push("## Removed by the grounding check", "", ...removed, "");
 
   lines.push("## Sources", "");
   for (const id of [...used].sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)))) {

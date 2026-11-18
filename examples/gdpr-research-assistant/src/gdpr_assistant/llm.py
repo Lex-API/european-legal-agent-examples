@@ -143,7 +143,8 @@ class OpenAiLlm:
         )
         message = completion.choices[0].message
         if getattr(message, "refusal", None):
-            raise LlmError(f"The model declined this request: {message.refusal}")
+            # The refusal text is model-written; it is not echoed into the error.
+            raise LlmError("The model declined this request.")
         for call in message.tool_calls or []:
             if call.type == "function" and call.function.name == request.tool_name:
                 try:

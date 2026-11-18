@@ -20,30 +20,50 @@ It finds provisions to read. It does not find the obligations that apply.
 
 1. **Plan** - the model turns the description into up to three search queries.
 2. **Retrieve** - `semanticLegislationSearch({ query, limit: 10, includeText: true })` per query.
-   The search covers all EU legislation, so hits are filtered in code to the AI Act
+   The search is not limited to the AI Act, so hits are filtered in code to the AI Act
    (`baseCelex ?? law_id` equal to `32024R1689`), one per article, best score first.
 3. **Draft** - the model gets the retrieved articles as numbered sources (`S1`, `S2`, ...) and
    returns excerpts plus notes, each naming its sources.
 4. **Check** - code validates the draft before anything is shown.
-   The check (`shared/grounding.ts`) rejects the draft if:
+   The check (`shared/grounding.ts`) **rejects** the draft if:
    - it cites a source id that was not retrieved in this run;
    - a quote is shorter than three words, or is not a verbatim excerpt of the source it names;
-   - a quotation inside a note (two words or more, or eight characters or more, in any style of
-     quotation marks) is not verbatim in a source that note cites, or a quotation mark is left open;
-   - a quote or note is not one line of plain text (a line break, or a leading heading,
-     blockquote, list, table or code-fence marker).
+   - a quotation inside a note (two words or more, or eight characters or more) is verbatim
+     neither in a source that note cites nor in the system description you gave, or a quotation mark is left open;
+   - a quote or note contains a line break or a control or format character (terminal escapes,
+     zero-width and bidi characters), or starts with a heading, blockquote, table or code-fence
+     marker;
+   - a note contains an HTML character reference (`&quot;`), a citation marker of its own
+     (`[S1]`), or a URL that is not the URL of a source it cites;
+   - there are more than 12 quotes or 12 notes, a quote is longer than 1,200 characters, or a
+     note is longer than 600.
 
-   "Verbatim" is compared after collapsing whitespace, unifying quotation-mark styles and dropping
-   soft hyphens on both sides.
+   "Verbatim" means that, after normalisation, the same words appear in the source in the same
+   order, starting and ending on a word boundary ("lawful" is not found in "unlawful").
+   Normalisation collapses whitespace, drops soft hyphens and maps these quotation marks to `"`
+   or `'`: `“ ” „ ‟ « » ＂ ❝ ❞ 「 」 『 』 ″ 〝 〞 〟`, `‘ ’ ‚ ‛ ‹ › ′ ＇ ❛ ❜`, the backtick and the
+   acute accent, a doubled `''`, and `,,` used as an opening mark. Punctuation and ellipses at the
+   two ends of a quotation are ignored, and the case of its first letter may differ. An apostrophe
+   inside a word (`provider's`, `don't`, `subjects'`) is not a quotation mark. A quote is printed
+   with the source's own characters. Other quotation conventions are not recognised.
 
-   Notes without a source are removed and listed. Notes that match a list of conclusion
-   phrasings ("is high-risk", "falls under Annex III", "the provider must ...", "you need to
-   ...") are removed too. That list is a blunt lexical filter for English output: it does not
-   catch every phrasing, and it does not cover other languages. A rejected draft is retried once
-   with the violations; after a second failure only the retrieved sources are printed.
-5. **Render** - quoted source text and model-written notes go in separate sections, and Markdown
-   in anything the model wrote is escaped, so a note cannot pass for a quote. Every source line
-   carries the CELEX number, the article id and a EUR-Lex link.
+   It **removes**, and only counts:
+   - notes that cite no source;
+   - notes that match the conclusion filter (`shared/conclusions.ts`): classifications ("is
+     high-risk", "falls under Annex III"), duties ("the provider must", "you need to", "must
+     comply") and applicability ("applies to your system"). A match is ignored when an earlier
+     word of the same sentence is `whether`, `if`, `how`, `which`, `may`, `might` or `could`,
+     because such a sentence frames a question. This is a blunt lexical filter for English
+     output: it does not catch every phrasing, and it does not cover other languages.
+
+   A rejected draft is retried once with the violations; after a second failure only the
+   retrieved sources are printed.
+5. **Render** - quoted source text and model-written notes go in separate sections. Everything the
+   model wrote that is printed - the notes and the search queries in the header - and your own
+   description go through one function (`plainText` in `shared/text.ts`) that escapes Markdown,
+   so none of it can pass for a heading or a quote. Removed notes are counted, not printed. A
+   note that quotes your description is marked as doing so. Every source line carries the CELEX
+   number, the article id and a EUR-Lex link.
 
 If the search returns no AI Act article, the output says "No supporting text found" and the model
 is not asked to draft anything.
@@ -100,9 +120,11 @@ your model provider.
 
 `npm test` runs `test/agent.test.ts` offline (local stub, scripted model): the answered path
 through the SDK and through the real `@lexapi/mcp` server process, the two "no supporting text"
-paths, rejection and retry of an ungrounded draft, a draft shaped like a fake quoted section,
-the sources-only fallback, removal of conclusion statements, the query bound, and the MCP
-truncation handling. Not covered by any test: the live API and a real model.
+paths, rejection and retry of an ungrounded draft, a draft and a search query shaped like a fake
+quoted section, every path by which model text reaches the output, ten well-behaved drafts in
+the styles models write, the sources-only fallback, removal of conclusion statements, the query
+bound, and the MCP truncation handling. The grounding rules themselves are tested from
+`shared/grounding-vectors.json`, which the Python suite runs too. Not covered by any test: the live API and a real model.
 
 ## Sample output (illustrative)
 
@@ -136,7 +158,7 @@ Hits: 12 in total, 3 from other acts (not shown). Model: scripted (no model was 
 
 ## Removed by the grounding check
 
-- (cited no source) Screening tools are widely used in recruitment.
+- 1 statement(s) removed: cited no source.
 
 ## Sources
 

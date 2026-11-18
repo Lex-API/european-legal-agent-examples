@@ -26,22 +26,44 @@ short model-written summary kept apart from the quotes.
 3. **Draft** - the model gets the articles and paragraphs as numbered sources and returns quotes
    plus summary sentences, each naming its sources.
 4. **Check** - code validates the draft before anything is shown.
-   The check (`grounding.py`) rejects the draft if:
+   The check (`grounding.py`) **rejects** the draft if:
    - it cites a source id that was not retrieved in this run;
    - a quote is shorter than three words, or is not a verbatim excerpt of the source it names;
-   - a quotation inside a sentence (two words or more, or eight characters or more, in any style of
-     quotation marks) is not verbatim in a source that sentence cites, or a quotation mark is left open;
-   - a quote or sentence is not one line of plain text (a line break, or a leading heading,
-     blockquote, list, table or code-fence marker).
+   - a quotation inside a sentence (two words or more, or eight characters or more) is verbatim
+     neither in a source that sentence cites nor in your question, or a quotation mark is left open;
+   - a quote or sentence contains a line break or a control or format character (terminal escapes,
+     zero-width and bidi characters), or starts with a heading, blockquote, table or code-fence
+     marker;
+   - a sentence contains an HTML character reference (`&quot;`), a citation marker of its own
+     (`[S1]`), or a URL that is not the URL of a source it cites;
+   - there are more than 12 quotes or 12 sentences, a quote is longer than 1,200 characters, or a
+     sentence is longer than 600.
 
-   "Verbatim" is compared after collapsing whitespace, unifying quotation-mark styles and dropping
-   soft hyphens on both sides.
+   "Verbatim" means that, after normalisation, the same words appear in the source in the same
+   order, starting and ending on a word boundary ("lawful" is not found in "unlawful").
+   Normalisation collapses whitespace, drops soft hyphens and maps these quotation marks to `"`
+   or `'`: `“ ” „ ‟ « » ＂ ❝ ❞ 「 」 『 』 ″ 〝 〞 〟`, `‘ ’ ‚ ‛ ‹ › ′ ＇ ❛ ❜`, the backtick and the
+   acute accent, a doubled `''`, and `,,` used as an opening mark. Punctuation and ellipses at the
+   two ends of a quotation are ignored, and the case of its first letter may differ. An apostrophe
+   inside a word (`provider's`, `don't`, `subjects'`) is not a quotation mark. A quote is printed
+   with the source's own characters. Other quotation conventions are not recognised.
 
-   Sentences without a source are removed and listed. A rejected draft is retried once; after a
-   second failure only the retrieved sources are printed.
+   It **removes**, and only counts:
+   - sentences that cite no source;
+   - sentences that match the conclusion filter (`conclusions.py`): wording addressed to you
+     ("you must", "you need to", "your processing is", "is compliant", "applies to you"). A match
+     is ignored when an earlier word of the same sentence is `whether`, `if`, `how`, `which`,
+     `may`, `might` or `could`. This is a blunt lexical filter for English output: it does not
+     catch every phrasing, and it does not cover other languages. Sentences that describe what
+     the law requires of controllers in general are not filtered; keeping those apart from advice
+     relies on the prompt.
+
+   A rejected draft is retried once; after a second failure only the retrieved sources are printed.
 5. **Render** - "Quoted from the sources" and "Summary (written by the model)" are separate
-   sections, and Markdown in anything the model wrote is escaped; every source line carries
-   CELEX, article id or paragraph, ECLI and link.
+   sections. The model's sentences and your question are printed through one function
+   (`plain_text` in `text.py`) that escapes Markdown; removed sentences are counted, not printed;
+   a sentence that quotes your question is marked as doing so. Every source line carries CELEX,
+   article id or paragraph, ECLI and link.
 
 If nothing is retrieved, or the model reports that the sources do not answer the question, the
 output says "No supporting text found" and gives no answer.
@@ -96,8 +118,10 @@ usage is billed separately by your model provider.
 `pytest` runs offline (local stub, scripted model; name lookups and connections to anything but
 127.0.0.1 are blocked): the answered path with the exact requests sent, the `--as-of` labels, both
 "no supporting text" paths, rejection and retry of an ungrounded draft, a draft shaped like a fake
-quoted section, the sources-only fallback, "not reported" credits, paragraph selection, the
-grounding rules, and the model adapters against fake provider clients.
+quoted section, every path by which model text reaches the output, ten well-behaved drafts, the
+sources-only fallback, "not reported" credits, paragraph selection, the grounding rules (from
+`shared/grounding-vectors.json`, which the TypeScript suite runs too), and the model adapters
+against fake provider clients.
 Not covered by any test: the live API and a real model.
 
 ## Sample output (illustrative)
@@ -130,7 +154,7 @@ Model: scripted (no model was called).
 
 ## Removed by the grounding check
 
-- (cited no source) Most companies rely on standard contractual clauses.
+- 1 statement(s) removed: cited no source.
 
 ## Sources
 

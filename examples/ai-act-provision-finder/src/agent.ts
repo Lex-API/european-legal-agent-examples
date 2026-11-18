@@ -24,7 +24,9 @@ import {
   type Source,
 } from "../../../shared/grounding.ts";
 import { CreditTally } from "../../../shared/env.ts";
+import { AI_ACT_PATTERNS, READER_PATTERNS } from "../../../shared/conclusions.ts";
 import type { Llm } from "../../../shared/llm.ts";
+import { length, modelTextProblem, plainText } from "../../../shared/text.ts";
 import { toSources, type LegislationHit, type LegislationSearch } from "./retrieve.ts";
 
 export interface FinderOptions {
@@ -73,31 +75,8 @@ You do not classify the system, you do not say which obligations apply, and you 
 
 You only know the provisions given to you as sources. Do not rely on anything else you may remember about the regulation.`;
 
-const RISK_CLASS = String.raw`(high[- ]risk|prohibited|limited[- ]risk|minimal[- ]risk|low[- ]risk)`;
-const SUBJECT = String.raw`(system|systems|tool|tools|product|provider|providers|deployer|deployers|company|operator|operators)`;
-const DUTY = String.raw`(must|shall|should|has to|have to|needs? to|(is|are) (required|obliged|obligated) to)`;
-
-/**
- * Wording that states a legal conclusion: a classification ("is high-risk",
- * "is not high risk", "is classified as ...", "falls under Annex III"), a
- * duty ("you must", "the provider has to", "must comply", "is mandatory",
- * "are obliged to") or applicability ("applies to your system").
- *
- * A blunt lexical filter for English output: it catches common phrasings,
- * not every one, and nothing in other languages.
- */
-export const CONCLUSION_PATTERNS: RegExp[] = [
-  new RegExp(String.raw`\b(is|are|was|will be|would be)\s+(not\s+)?(an?\s+)?((classified|considered|regarded|deemed|treated)\s+(as\s+)?)?(an?\s+)?${RISK_CLASS}\b`, "i"),
-  new RegExp(String.raw`\b(qualif(y|ies)|counts?|classif(y|ies)|classified)\s+as\s+(an?\s+)?${RISK_CLASS}\b`, "i"),
-  /\bfalls?\s+(under|within)\s+(annex|article|the\s+(scope|category|definition))\b/i,
-  /\b(is|are)\s+(not\s+)?(compliant|non-compliant|in compliance|exempt|subject to)\b/i,
-  /\b(is|are)\s+(mandatory|obligatory|compulsory)\b/i,
-  /\b(is|are)\s+(obliged|obligated|required)\s+to\b/i,
-  new RegExp(String.raw`\b${DUTY}\s+comply\b`, "i"),
-  new RegExp(String.raw`\byou\s+${DUTY}\b`, "i"),
-  new RegExp(String.raw`\b${SUBJECT}\s+${DUTY}\b`, "i"),
-  /\bappl(y|ies)\s+to\s+(your|the|this)\s+(system|tool|product|company)\b/i,
-];
+/** The conclusion filter this example applies to the model's notes (see `shared/conclusions.ts`). */
+export const CONCLUSION_PATTERNS: string[] = [...READER_PATTERNS, ...AI_ACT_PATTERNS];
 
 const HUMAN_DECIDES = `## What a human must decide
 
@@ -117,10 +96,13 @@ export async function findProvisions(
     user: `AI system description:\n${description}\n\nPropose up to ${maxQueries} search queries.`,
     tool: PLAN_TOOL,
   })) as { queries?: unknown };
+  // The queries are model-written text: they are sent to the API and printed in the header,
+  // so they pass the same rules as any other model text (one plain line, no control characters).
   const queries = (Array.isArray(plan.queries) ? plan.queries : [])
     .filter((q): q is string => typeof q === "string")
+    .filter((q) => modelTextProblem(q, "query") === undefined)
     .map((q) => q.trim())
-    .filter((q) => q.length >= 3 && q.length <= 1000) // the API's limits on `query`
+    .filter((q) => length(q) >= 3 && length(q) <= 1000) // the API's limits on `query`
     .slice(0, maxQueries);
   if (queries.length === 0) queries.push(description.trim().slice(0, 1000));
 
@@ -143,13 +125,13 @@ export async function findProvisions(
   }
 
   // 3 + 4. Draft, then check (one retry with the violations fed back) -------
-  const baseUser = `AI system description:\n${description}\n\nRetrieved provisions:\n\n${sourcesForPrompt(sources)}\n\nSelect the excerpts most worth reading for this system and add a short note for each. Copy excerpts exactly, one line each. Write each note as one line of plain text and give it the source ids it relies on. If none of the provisions is relevant, set status to no_support.`;
+  const baseUser = `AI system description:\n${description}\n\nRetrieved provisions:\n\n${sourcesForPrompt(sources)}\n\nSelect the excerpts most worth reading for this system and add a short note for each. Copy excerpts exactly, whole words, one line each. Write each note as one line of plain text (no Markdown, no URLs) and give it the source ids it relies on. Put quotation marks only around words copied exactly from a source or from the description. If none of the provisions is relevant, set status to no_support.`;
   let answer: GroundedAnswer | undefined;
   let feedback = "";
   for (let attempt = 0; attempt < 2 && !answer; attempt++) {
     const raw = await deps.llm.generate({ system: SYSTEM, user: baseUser + feedback, tool: DRAFT_TOOL });
     try {
-      answer = validateDraft(parseDraft(raw), sources, { forbidden: CONCLUSION_PATTERNS });
+      answer = validateDraft(parseDraft(raw), sources, { conclusionPatterns: CONCLUSION_PATTERNS, userText: description });
     } catch (error) {
       if (!(error instanceof GroundingError)) throw error;
       feedback = `\n\nYour previous draft was rejected:\n- ${error.violations.join("\n- ")}\nFix these and submit again.`;
@@ -184,9 +166,9 @@ function renderHeader(
   return [
     "# AI Act provision finder",
     "",
-    `**System described:** ${description}`,
+    `**System described:** ${plainText(description)}`,
     "",
-    `Searches run (${deps.search.label}): ${queries.map((q) => `"${q}"`).join("; ")}`,
+    `Searches run (${deps.search.label}): ${queries.map((q) => `"${plainText(q)}"`).join("; ")}`,
     `Hits: ${hitCount} in total, ${otherActs} from other acts (not shown). Model: ${deps.llm.label}.`,
     "",
   ].join("\n");

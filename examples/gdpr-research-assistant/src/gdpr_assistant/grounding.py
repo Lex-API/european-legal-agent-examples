@@ -5,30 +5,36 @@ The model never writes the final answer directly. It returns a draft:
 - ``quotes``     - excerpts it wants shown, each naming the source it came from;
 - ``statements`` - its own sentences, each naming the sources that support it.
 
-``validate_draft`` then enforces, in code:
+``validate_draft`` REJECTS the draft (raises ``GroundingError``) when:
 
-1. every source id in the draft was actually retrieved in this run        -> otherwise REJECT;
-2. every quote is at least three words long and a verbatim excerpt of the
-   source it names                                                        -> otherwise REJECT;
-3. every quotation inside a statement (two words or more, or eight
-   characters or more, in any style of quotation marks) is verbatim in a
-   source that statement cites; quotation marks must be balanced          -> otherwise REJECT;
-4. quotes and statements are single lines of plain text: no line breaks,
-   no leading Markdown block marker (heading, blockquote, list, table,
-   code fence)                                                            -> otherwise REJECT;
-5. a statement that cites no source is removed and reported.
+1. a quote or statement cites a source id that was not retrieved in this run;
+2. a quote is not a verbatim excerpt of the source it names, or is shorter
+   than three words;
+3. a quotation inside a statement (two words or more, or eight characters or
+   more) is verbatim neither in a source that statement cites nor in the
+   user's own question, or a quotation mark is left open;
+4. a quote or statement breaks the rules for model text in ``text.py`` (line
+   breaks, control characters, leading block markers, length; for statements
+   also HTML character references and ``[S1]``-style markers);
+5. a statement contains a URL that is not the URL of a source it cites;
+6. there are more than 12 quotes or more than 12 statements.
 
-"Verbatim" is checked after collapsing whitespace, unifying quotation-mark
-styles and dropping soft hyphens, on both sides.
+It REMOVES, and counts without repeating them:
 
-"Reject" raises ``GroundingError``; the agent retries once, then falls back to
-showing the sources only.
+7. statements that cite no source;
+8. statements that match the conclusion filter (``conclusions.py``).
 
-This checks that citations are real and excerpts are verbatim. It cannot check
-that an excerpt is quoted in context, or that a model-written statement is a
-correct reading of the source - that is why the rendered output keeps quoted
-text and model text visibly apart, and escapes Markdown in everything the
-model wrote.
+"Verbatim" means: after normalisation (see ``text.normalise``), the words
+appear in the source in the same order, starting and ending on a word
+boundary. Punctuation and ellipses at the two ends of a quotation are ignored,
+and the case of its first character may differ. A quote is printed with the
+source's own characters, not the model's.
+
+The agent retries a rejected draft once, then shows the sources only.
+
+What this does not check: that an excerpt is quoted in context, or that a
+model-written statement is a correct reading of the source it cites. That is
+why the output keeps quoted text and model text in separate sections.
 """
 
 from __future__ import annotations
@@ -37,6 +43,22 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Literal
 from urllib.parse import quote as url_quote
+
+from gdpr_assistant.conclusions import states_conclusion
+from gdpr_assistant.text import (
+    find_verbatim,
+    model_text_problem,
+    normalise,
+    plain_text,
+    quotations_in,
+    trim_quotation,
+    urls_in,
+    word_count,
+)
+
+MAX_QUOTES = 12
+MAX_STATEMENTS = 12
+MIN_QUOTE_WORDS = 3
 
 
 @dataclass(frozen=True)
@@ -65,14 +87,24 @@ class Quote:
 class Statement:
     text: str
     sources: tuple[str, ...]
+    #: The statement quotes words from the user's own question (not from a source).
+    quotes_user_input: bool = False
+
+
+@dataclass(frozen=True)
+class Removed:
+    """How many statements were removed, by reason. Their text is not kept."""
+
+    uncited: int = 0
+    conclusion: int = 0
 
 
 @dataclass(frozen=True)
 class GroundedAnswer:
     status: Literal["answered", "no_support"]
-    quotes: tuple[Quote, ...] = ()
+    quotes: tuple[Quote, ...] = ()  # text is the excerpt as it stands in the source
     statements: tuple[Statement, ...] = ()
-    removed: tuple[str, ...] = ()  # statements dropped because they cited no source
+    removed: Removed = Removed()
 
 
 class GroundingError(Exception):
@@ -86,75 +118,6 @@ class _Parsed:
     status: str
     quotes: list[Quote] = field(default_factory=list)
     statements: list[Statement] = field(default_factory=list)
-
-
-_SINGLE_QUOTES = dict.fromkeys(map(ord, "‘’‚‛‹›"), "'")
-_DOUBLE_QUOTES = dict.fromkeys(map(ord, "“”„‟«»"), '"')
-_TYPOGRAPHY = {**_SINGLE_QUOTES, **_DOUBLE_QUOTES, 0x00AD: None}
-_LINE_BREAK = re.compile("[\n\r  ]")
-_STATEMENT_MARKER = re.compile(r"^(#|>|\||```|~~~|[-*+]\s|\d+[.)]\s)")
-# A quote may open with a paragraph number ("1. The controller ..."): laws are written that way.
-_QUOTE_MARKER = re.compile(r"^(#|>|\||```|~~~|[-*+]\s)")
-_MARKDOWN_CONTROL = re.compile(r"[\\`*_#>|\[\]<~]")
-MIN_QUOTE_WORDS = 3
-
-
-def normalise(text: str) -> str:
-    """Collapse whitespace, unify quotation-mark styles and drop soft hyphens.
-
-    Line wrapping and typography then do not break a verbatim match.
-    """
-    return re.sub(r"\s+", " ", text.translate(_TYPOGRAPHY)).strip()
-
-
-def _shape_problem(text: str, markers: re.Pattern[str]) -> str | None:
-    """Why a piece of model text may not be rendered as one plain line, or ``None`` if it may."""
-    if _LINE_BREAK.search(text):
-        return "contains a line break"
-    if markers.match(text.lstrip()):
-        return "starts with a Markdown block marker"
-    return None
-
-
-def embedded_quotations(statement: str) -> list[str] | None:
-    """The quotations inside a statement, in any style of quotation marks.
-
-    The text is normalised first, so only ``"`` and ``'`` remain. A ``'``
-    between two letters, or closing nothing, is an apostrophe ("provider's",
-    "subjects'"). Returns ``None`` when a quotation mark is left open.
-    """
-    text = normalise(statement)
-    spans: list[str] = []
-    opened: tuple[str, int] | None = None
-    for i, ch in enumerate(text):
-        if ch not in "\"'":
-            continue
-        before = text[i - 1] if i > 0 else " "
-        after = text[i + 1] if i + 1 < len(text) else " "
-        if opened:
-            if ch != opened[0]:
-                continue
-            if ch == "'" and before.isalnum() and after.isalnum():
-                continue  # apostrophe inside a word
-            spans.append(text[opened[1] + 1 : i].strip())
-            opened = None
-        elif ch == '"' or (not before.isalnum() and after != " "):
-            opened = (ch, i)  # a single quote opens only at the start of a word
-    return None if opened else spans
-
-
-def _must_be_verbatim(quotation: str) -> bool:
-    """Quotations long enough to carry meaning: two words or more, or eight characters or more."""
-    return len(quotation) >= 8 or len(quotation.split()) >= 2
-
-
-def escape_markdown(text: str) -> str:
-    """Escape Markdown control characters in text the model wrote.
-
-    It then renders as literal characters: it cannot open a heading, a
-    blockquote, a link or a citation marker of its own.
-    """
-    return _MARKDOWN_CONTROL.sub(lambda m: "\\" + m.group(0), normalise(text))
 
 
 def _parse(draft: Any) -> _Parsed:
@@ -180,61 +143,110 @@ def _parse(draft: Any) -> _Parsed:
     return parsed
 
 
-def validate_draft(draft: Any, sources: list[Source]) -> GroundedAnswer:
+def _must_be_verbatim(quotation: str) -> bool:
+    """Quotations long enough to carry meaning: two words or more, or eight characters or more."""
+    return len(quotation) >= 8 or word_count(quotation) >= 2
+
+
+def validate_draft(
+    draft: Any,
+    sources: list[Source],
+    *,
+    user_text: str = "",
+    conclusion_patterns: tuple[str, ...] | None = None,
+) -> GroundedAnswer:
+    """Check a draft against the retrieved sources.
+
+    ``user_text`` is the user's own input: a statement may quote it, and such a
+    quotation is not presented as law. Statements matching one of
+    ``conclusion_patterns`` are removed.
+    """
     parsed = _parse(draft)
     if parsed.status == "no_support":
         return GroundedAnswer(status="no_support")
 
     # Normalise each source once; drafts can carry many quotes.
-    by_id = {s.id: normalise(s.text) for s in sources}
+    texts = {s.id: normalise(s.text) for s in sources}
+    urls = {s.id: s.url for s in sources}
+    user = normalise(user_text)
     violations: list[str] = []
+    if len(parsed.quotes) > MAX_QUOTES:
+        violations.append(f"more than {MAX_QUOTES} quotes")
+    if len(parsed.statements) > MAX_STATEMENTS:
+        violations.append(f"more than {MAX_STATEMENTS} statements")
 
     quotes: list[Quote] = []
-    for q in parsed.quotes:
-        source_text = by_id.get(q.source)
-        wanted = normalise(q.text)
+    for q in parsed.quotes[:MAX_QUOTES]:
+        source_text = texts.get(q.source)
         if source_text is None:
             violations.append(f'quote cites "{q.source}", which was not retrieved')
-        elif shape := _shape_problem(q.text.strip(), _QUOTE_MARKER):
-            violations.append(f"quote from {q.source} {shape}; a quote is one line of plain text")
-        elif len(wanted.split()) < MIN_QUOTE_WORDS:
+            continue
+        if problem := model_text_problem(q.text, "quote"):
+            violations.append(f"quote from {q.source} {problem}")
+            continue
+        # A model often wraps the excerpt in quotation marks or ends it with "..."; neither is part of the excerpt.
+        wanted = trim_quotation(normalise(q.text))
+        if len(wanted) >= 2 and wanted.startswith('"') and wanted.endswith('"'):
+            wanted = trim_quotation(wanted[1:-1])
+        if word_count(wanted) < MIN_QUOTE_WORDS:
             violations.append(f"quote from {q.source} is shorter than {MIN_QUOTE_WORDS} words")
-        elif wanted not in source_text:
-            violations.append(f"quote from {q.source} is not a verbatim excerpt of that source")
-        else:
-            quotes.append(Quote(q.source, wanted))
+            continue
+        excerpt = find_verbatim(source_text, wanted)
+        if excerpt is None:
+            violations.append(f"quote from {q.source} is not a verbatim excerpt of that source (whole words, in order)")
+            continue
+        quotes.append(Quote(q.source, excerpt))
 
     kept: list[Statement] = []
-    removed: list[str] = []
-    for st in parsed.statements:
+    uncited = conclusion = 0
+    for st in parsed.statements[:MAX_STATEMENTS]:
         ids = tuple(dict.fromkeys(st.sources))  # de-duplicated, order kept
-        unknown = [i for i in ids if i not in by_id]
+        unknown = [i for i in ids if i not in texts]
         if unknown:
             cited = ", ".join(f'"{i}"' for i in unknown)
             violations.append(f"statement cites {cited}, which was not retrieved")
             continue
-        if shape := _shape_problem(st.text.strip(), _STATEMENT_MARKER):
-            violations.append(f"a statement {shape}; each statement is one line of plain text")
+        if not ids:
+            uncited += 1
+            continue
+        if problem := model_text_problem(st.text, "statement"):
+            violations.append(f"a statement {problem}")
             continue
         text = normalise(st.text)
-        if not ids:
-            removed.append(text)
+        if conclusion_patterns and states_conclusion(text, conclusion_patterns):
+            conclusion += 1
             continue
-        quotations = embedded_quotations(text)
+        if any(url not in [urls[i] for i in ids] for url in urls_in(text)):
+            violations.append("a statement contains a URL that is not the URL of a source it cites")
+            continue
+        quotations = quotations_in(text)
         if quotations is None:
             violations.append("a statement has an unbalanced quotation mark")
             continue
-        cited_texts = [by_id[i] for i in ids]
-        invented = [q for q in quotations if _must_be_verbatim(q) and not any(q in t for t in cited_texts)]
-        if invented:
-            violations.append(f'statement contains a quotation that is not in the sources it cites: "{invented[0]}"')
+        cited_texts = [texts[i] for i in ids]
+        quotes_user_input = False
+        invented: str | None = None
+        for quotation in map(trim_quotation, quotations):
+            if not _must_be_verbatim(quotation):
+                continue
+            if any(find_verbatim(t, quotation) is not None for t in cited_texts):
+                continue
+            if find_verbatim(user, quotation) is not None:
+                quotes_user_input = True
+            elif invented is None:
+                invented = quotation
+        if invented is not None:
+            violations.append(
+                "a statement contains a quotation that is not in the sources it cites "
+                f'(whole words, in order): "{invented}"'
+            )
             continue
-        kept.append(Statement(text, ids))
+        kept.append(Statement(text, ids, quotes_user_input))
 
     if violations:
         raise GroundingError(violations)
     status: Literal["answered", "no_support"] = "answered" if kept or quotes else "no_support"
-    return GroundedAnswer(status, tuple(quotes), tuple(kept), tuple(removed))
+    return GroundedAnswer(status, tuple(quotes), tuple(kept), Removed(uncited, conclusion))
 
 
 #: JSON Schema of the draft, used as the model's tool input schema.
@@ -248,8 +260,8 @@ DRAFT_SCHEMA: dict[str, Any] = {
         },
         "quotes": {
             "type": "array",
-            "description": "Verbatim excerpts copied character for character from one source: "
-            "one line each, at least three words.",
+            "description": "At most 12 verbatim excerpts, each copied character for character from one source: "
+            "one line, whole words, 3 words to 1,200 characters.",
             "items": {
                 "type": "object",
                 "properties": {
@@ -262,7 +274,8 @@ DRAFT_SCHEMA: dict[str, Any] = {
         },
         "statements": {
             "type": "array",
-            "description": "Your own sentences, one plain-text line each (no Markdown, no line breaks). "
+            "description": "At most 12 of your own sentences, one plain-text line of at most 600 characters each "
+            "(no Markdown, no line breaks, no URLs, no [S1] markers in the text). "
             "Each lists the source ids that support it.",
             "items": {
                 "type": "object",
@@ -307,6 +320,16 @@ def citation(source: Source) -> str:
     return " - ".join(parts)
 
 
+def render_removed(removed: Removed) -> list[str]:
+    """What the check removed: counts and reasons only - the removed text is never repeated."""
+    lines = []
+    if removed.uncited:
+        lines.append(f"- {removed.uncited} statement(s) removed: cited no source.")
+    if removed.conclusion:
+        lines.append(f"- {removed.conclusion} statement(s) removed: matched the conclusion filter.")
+    return lines
+
+
 def render_answer(answer: GroundedAnswer, sources: list[Source]) -> str:
     """Quoted source text and model-written text go in separate sections; every line carries its source ids."""
     by_id = {s.id: s for s in sources}
@@ -316,21 +339,21 @@ def render_answer(answer: GroundedAnswer, sources: list[Source]) -> str:
         lines += ["_The model selected no excerpts._", ""]
     for q in answer.quotes:
         used.add(q.source)
-        lines += [f'> "{escape_markdown(q.text)}" [{q.source}]', ""]
+        lines += [f'> "{plain_text(q.text)}" [{q.source}]', ""]
 
     lines += ["## Summary (written by the model - not legal text)", ""]
     if not answer.statements:
         lines += ["_None._", ""]
     for st in answer.statements:
         used.update(st.sources)
-        lines.append(f"- {escape_markdown(st.text)} " + "".join(f"[{i}]" for i in st.sources))
+        note = " (the quoted words are from your question, not from a source)" if st.quotes_user_input else ""
+        lines.append(f"- {plain_text(st.text)} " + "".join(f"[{i}]" for i in st.sources) + note)
     if answer.statements:
         lines.append("")
 
-    if answer.removed:
-        lines += ["## Removed by the grounding check", ""]
-        lines += [f"- (cited no source) {escape_markdown(text)}" for text in answer.removed]
-        lines.append("")
+    removed = render_removed(answer.removed)
+    if removed:
+        lines += ["## Removed by the grounding check", "", *removed, ""]
 
     lines += ["## Sources", ""]
     for source_id in sorted(used, key=lambda i: int(i[1:])):

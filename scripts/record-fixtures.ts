@@ -3,7 +3,7 @@
  *
  *   LEXAPI_API_KEY=lex_... npm run record-fixtures -- --i-have-a-key
  *
- * THIS SCRIPT CALLS THE REAL LexAPI SERVICE AND SPENDS CREDITS (about 35-50,
+ * THIS SCRIPT CALLS THE REAL LexAPI SERVICE AND SPENDS CREDITS (about 30-50,
  * see `PLAN` below). It is for the repository owner or a contributor who
  * wants to compare the synthetic fixtures in `offline/fixtures` with what the
  * API returns today. It is never run by the tests or by CI, and it refuses
@@ -84,7 +84,8 @@ console.log("case-law-semantic.gdpr (5 credit(s)) ...");
 const cases = await client.semanticSearch({ query: "transfer of personal data to a third country", limit: 5 });
 save("case-law-semantic.gdpr", cases);
 const celex = cases.results[0]?.metadata?.celex_id;
-if (celex) {
+// The CELEX comes from a response and ends up in a file name: accept only the characters a CELEX has.
+if (typeof celex === "string" && /^[0-9A-Z()]{6,24}$/.test(celex)) {
   console.log(`document.${celex} (1-5 credit(s)) ...`);
   save(`document.${celex}`, await client.getDocument({ celexNumber: celex, include: ["metadata", "paragraphs"] }));
 }

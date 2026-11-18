@@ -81,7 +81,8 @@ test("the digest lists every record with CELEX and link, and keeps only cited su
   assert.match(digest.markdown, /Listed because: amendment of GDPR \(32016R0679\)/);
   assert.ok(digest.markdown.indexOf("records returned by LexAPI") < digest.markdown.indexOf("written by the model"));
   assert.equal(digest.answer?.statements.length, 3);
-  assert.match(digest.markdown, /Removed by the grounding check \(cited no source\): "More changes are expected next month\."/);
+  assert.match(digest.markdown, /Removed by the grounding check:\n- 1 statement\(s\) removed: cited no source\./);
+  assert.doesNotMatch(digest.markdown, /More changes are expected/);
   assert.match(llm.calls[0]?.system ?? "", /you have not read its text/);
 });
 
@@ -169,12 +170,43 @@ test("a summary sentence shaped like Markdown is rejected; accepted text is esca
   assert.equal(rejected.outcome, "list_only");
   assert.doesNotMatch(rejected.markdown, /A fake record/);
 
-  const styled = { status: "answered", statements: [{ text: "See [S9] and **this** record.", sources: ["S1"] }] };
+  // A citation marker written into the text is refused; other Markdown is printed escaped.
+  const marker = { status: "answered", statements: [{ text: "See [S9] for the record.", sources: ["S1"] }] };
+  const refused = await buildDigest({ items: result.items, notices: [], origin: "polling", generatedAt: NOW }, new ScriptedLlm({ submit_digest: marker }));
+  assert.equal(refused.outcome, "list_only");
+  const styled = { status: "answered", statements: [{ text: "1. See **this** <record> & more.", sources: ["S1"] }] };
   const llm = new ScriptedLlm({ submit_digest: styled });
   const accepted = await buildDigest({ items: result.items, notices: [], origin: "polling", generatedAt: NOW }, llm);
-  assert.match(accepted.markdown, /^- See \\\[S9\\\] and \\\*\\\*this\\\*\\\* record\. \[S1\]$/m);
+  assert.match(accepted.markdown, /^- 1\\\. See \\\*\\\*this\\\*\\\* \\<record\\> \\& more\. \[S1\]$/m);
+  for (const digest of [rejected, refused, accepted]) {
+    const headings = digest.markdown.split("\n").filter((line) => /^\s{0,3}#/.test(line));
+    assert.ok(headings.every((h) => h === "# Regulatory change digest" || /^## (Documents \(records returned by LexAPI\)|Summary( \(written by the model.*\))?|Notices)$/.test(h)), headings.join(" | "));
+  }
   // The digest tool asks for statements only.
   assert.deepEqual(Object.keys((llm.calls[0]?.tool.schema as { properties: object }).properties), ["status", "statements"]);
+});
+
+test("ten well-behaved summaries in the styles models write are all accepted", async () => {
+  const state = { ...emptyState(), baselined: ["32016R0679", "32024R1689"] };
+  const { items } = await poll(createLexApiClient(offlineEnv()), watchlist, state, NOW);
+  const summaries: Array<Array<{ text: string; sources: string[] }>> = [
+    [{ text: "Two acts are newly recorded against the GDPR: a corrigendum and an amending regulation.", sources: ["S1", "S2"] }],
+    [{ text: "Two regulations were picked up under the \"New regulations\" topic.", sources: ["S3", "S4"] }],
+    [{ text: "1. One Commission communication has artificial intelligence in its title.", sources: ["S5"] }, { text: "2. It is dated 2026-11-13.", sources: ["S5"] }],
+    [{ text: "The GDPR's watch list entry shows a corrigendum (CELEX 32099R0003) and an amendment (CELEX 32099R0001).", sources: ["S1", "S2"] }],
+    [{ text: "\"Corrigendum to Regulation (EU) 2016/679\" is the title of the first record.", sources: ["S1"] }],
+    [{ text: "Under 'New regulations', the records are an implementing regulation of 12 November and a regulation of 14 November 2026.", sources: ["S3", "S4"] }],
+    [{ text: "The record titled \u201CCommunication from the Commission on placeholder guidelines for artificial intelligence\u201D was found by the 'Artificial intelligence' topic.", sources: ["S5"] }],
+    [{ text: "No document's text was read; what each act changes is not known from these records.", sources: ["S1", "S2", "S3", "S4", "S5"] }],
+    [{ text: "- GDPR: one corrigendum, one amendment.", sources: ["S1", "S2"] }, { text: "- Topics: two regulations and one communication.", sources: ["S3", "S4", "S5"] }],
+    [{ text: "Commission Implementing Regulation (EU) 2099/100 and Regulation (EU) 2099/101 are the week's new regulations; both records carry the type and date only.", sources: ["S3", "S4"] }],
+  ];
+  for (const [index, statements] of summaries.entries()) {
+    const llm = new ScriptedLlm({ submit_digest: { status: "answered", statements } });
+    const digest = await buildDigest({ items, notices: [], origin: "polling", generatedAt: NOW }, llm);
+    assert.equal(digest.outcome, "summarised", `summary ${index + 1}: ${llm.calls.at(-1)?.user.split("rejected:")[1] ?? ""}`);
+    assert.equal(digest.answer?.statements.length, statements.length);
+  }
 });
 
 test("only the newest delivery ids are remembered", () => {

@@ -1,0 +1,2056 @@
+{
+ "_comment": "Cases run by BOTH test suites (shared/grounding.test.ts and the Python tests), so the TypeScript and Python grounding checks cannot drift apart. The texts are test inputs written for this file; they are not legal texts. {\"repeat\": [unit, n]} stands for the unit repeated n times.",
+ "sources": [
+  {
+   "id": "S1",
+   "url": "https://example.org/s1",
+   "text": "1. Processing is unlawful where consent is absent. 2. Non-compliance with this Article leads to a fine. 3. Such a move needs no extra permit; the keeper shall not be obliged to store more data."
+  },
+  {
+   "id": "S2",
+   "url": "https://example.org/s2",
+   "text": "The keeper is barred from sending records abroad without a permit."
+  },
+  {
+   "id": "S3",
+   "url": "https://example.org/s3",
+   "text": "the trans\u00adfer shall not take\u00a0place \u201cat once\u201d"
+  }
+ ],
+ "userText": "A tool that ranks job applicants and chats with candidates",
+ "normalise": [
+  [
+   "  a\u00a0b\tc \u2003d  ",
+   "a b c d"
+  ],
+  [
+   "trans\u00adfer",
+   "transfer"
+  ],
+  [
+   "\u201ea\u201c \u00abb\u00bb \u2018c\u2019 \u2039d\u203a",
+   "\"a\" \"b\" 'c' 'd'"
+  ],
+  [
+   "''a'' ,,b'' `c` \u00b4d\u00b4 \u300ce\u300d \uff02f\uff02 \u2032g\u2032 \u2033h\u2033 \u275di\u275e",
+   "\"a\" \"b\" 'c' 'd' \"e\" \"f\" 'g' \"h\" \"i\""
+  ],
+  [
+   "a,, b and 1,,2",
+   "a,, b and 1,,2"
+  ],
+  [
+   "a\u0085b\u2028c",
+   "a b c"
+  ]
+ ],
+ "quotations": [
+  [
+   "says \"never allowed\" here",
+   [
+    "never allowed"
+   ]
+  ],
+  [
+   "says 'never allowed' here",
+   [
+    "never allowed"
+   ]
+  ],
+  [
+   "says ' never allowed ' here",
+   [
+    "never allowed"
+   ]
+  ],
+  [
+   "says'never allowed' here",
+   [
+    "never allowed"
+   ]
+  ],
+  [
+   "it says 'the keeper's duty' here",
+   [
+    "the keeper's duty"
+   ]
+  ],
+  [
+   "the keeper's duty and data subjects' rights, and it's fine",
+   []
+  ],
+  [
+   "Article 50(1)'s wording and the '95 Directive",
+   []
+  ],
+  [
+   "l'Union, d'appel and O'Brien don't count",
+   []
+  ],
+  [
+   "a \"double with 'single' inside\" b",
+   [
+    "double with 'single' inside"
+   ]
+  ],
+  [
+   "says \"never allowed here",
+   null
+  ],
+  [
+   "says 'never allowed here",
+   null
+  ],
+  [
+   "\"a\" and \"b c\"",
+   [
+    "a",
+    "b c"
+   ]
+  ]
+ ],
+ "plainText": [
+  [
+   "see [S9] and *this* `c` <b> # > | ~ _x_ \\ &quot;",
+   "see \\[S9\\] and \\*this\\* 'c' \\<b\\> \\# \\> \\| \\~ \\_x\\_ \\\\ \\&quot;"
+  ],
+  [
+   "1. item",
+   "1\\. item"
+  ],
+  [
+   "12) item",
+   "12\\) item"
+  ],
+  [
+   "- item",
+   "\\- item"
+  ],
+  [
+   "+ item",
+   "\\+ item"
+  ],
+  [
+   "* item",
+   "\\* item"
+  ],
+  [
+   "-risk and 1.5 are fine",
+   "-risk and 1.5 are fine"
+  ],
+  [
+   "a   b\tc",
+   "a b c"
+  ],
+  [
+   "\uff11. item",
+   "\uff11. item"
+  ]
+ ],
+ "modelTextProblems": [
+  [
+   "a plain query",
+   "query",
+   null
+  ],
+  [
+   "two\nlines",
+   "query",
+   "line break"
+  ],
+  [
+   "bell\u0007",
+   "query",
+   "control or format character"
+  ],
+  [
+   "# heading",
+   "query",
+   "Markdown block marker"
+  ],
+  [
+   "tab\tis fine",
+   "statement",
+   null
+  ],
+  [
+   "soft\u00adhyphen is fine",
+   "statement",
+   null
+  ],
+  [
+   "[S1] marker",
+   "query",
+   null
+  ],
+  [
+   "&amp; reference",
+   "quote",
+   null
+  ]
+ ],
+ "conclusions": [
+  {
+   "text": "The system is high-risk under this article.",
+   "reader": false,
+   "aiAct": true
+  },
+  {
+   "text": "The system is high risk.",
+   "reader": false,
+   "aiAct": true
+  },
+  {
+   "text": "The tool is not high-risk.",
+   "reader": false,
+   "aiAct": true
+  },
+  {
+   "text": "This is a high-risk AI system.",
+   "reader": false,
+   "aiAct": true
+  },
+  {
+   "text": "The system is classified as high-risk.",
+   "reader": false,
+   "aiAct": true
+  },
+  {
+   "text": "The CV ranker qualifies as high-risk.",
+   "reader": false,
+   "aiAct": true
+  },
+  {
+   "text": "The tool falls under Annex III.",
+   "reader": false,
+   "aiAct": true
+  },
+  {
+   "text": "The tool falls within Annex III.",
+   "reader": false,
+   "aiAct": true
+  },
+  {
+   "text": "Emotion recognition at work is prohibited under Article 5.",
+   "reader": false,
+   "aiAct": true
+  },
+  {
+   "text": "The provider must establish a risk management system.",
+   "reader": false,
+   "aiAct": true
+  },
+  {
+   "text": "The provider has to keep logs.",
+   "reader": false,
+   "aiAct": true
+  },
+  {
+   "text": "Providers of such systems must comply with Article 9.",
+   "reader": false,
+   "aiAct": true
+  },
+  {
+   "text": "Deployers are obliged to inform workers.",
+   "reader": false,
+   "aiAct": true
+  },
+  {
+   "text": "It is mandatory to carry out a conformity assessment.",
+   "reader": false,
+   "aiAct": true
+  },
+  {
+   "text": "These obligations apply to the system.",
+   "reader": false,
+   "aiAct": true
+  },
+  {
+   "text": "The tool is exempt.",
+   "reader": false,
+   "aiAct": true
+  },
+  {
+   "text": "Your system qualifies as a high-risk AI system.",
+   "reader": false,
+   "aiAct": true
+  },
+  {
+   "text": "You must inform candidates.",
+   "reader": true,
+   "aiAct": true
+  },
+  {
+   "text": "You need to register the system.",
+   "reader": true,
+   "aiAct": true
+  },
+  {
+   "text": "You should register the system.",
+   "reader": true,
+   "aiAct": true
+  },
+  {
+   "text": "You are required to appoint a representative.",
+   "reader": true,
+   "aiAct": true
+  },
+  {
+   "text": "Your processing is lawful.",
+   "reader": true,
+   "aiAct": true
+  },
+  {
+   "text": "Your company must keep records.",
+   "reader": true,
+   "aiAct": true
+  },
+  {
+   "text": "The tool is compliant with this provision.",
+   "reader": true,
+   "aiAct": true
+  },
+  {
+   "text": "The transfer is not compliant.",
+   "reader": true,
+   "aiAct": true
+  },
+  {
+   "text": "These obligations apply to your system.",
+   "reader": true,
+   "aiAct": true
+  },
+  {
+   "text": "This article applies to you.",
+   "reader": true,
+   "aiAct": true
+  },
+  {
+   "text": "This is a question. You must act now.",
+   "reader": true,
+   "aiAct": true
+  },
+  {
+   "text": "Whether the system falls in this category is a question for a qualified person.",
+   "reader": false,
+   "aiAct": false
+  },
+  {
+   "text": "Whether a CV-ranking tool falls within Annex III is for a qualified person to decide.",
+   "reader": false,
+   "aiAct": false
+  },
+  {
+   "text": "If the system is high-risk, this article describes a risk management process that may be worth reading.",
+   "reader": false,
+   "aiAct": false
+  },
+  {
+   "text": "This article sets out how a system is assigned to a category.",
+   "reader": false,
+   "aiAct": false
+  },
+  {
+   "text": "The provision on telling people they are interacting with an AI system may be worth reading.",
+   "reader": false,
+   "aiAct": false
+  },
+  {
+   "text": "A qualified person would have to decide which obligations apply to the system.",
+   "reader": false,
+   "aiAct": false
+  },
+  {
+   "text": "It may be worth checking whether you must register the system.",
+   "reader": false,
+   "aiAct": false
+  },
+  {
+   "text": "The article describes when a transfer may take place.",
+   "reader": false,
+   "aiAct": false
+  },
+  {
+   "text": "Das System ist ein Hochrisiko-KI-System.",
+   "reader": false,
+   "aiAct": false
+  },
+  {
+   "text": "Vous devez enregistrer le syst\u00e8me.",
+   "reader": false,
+   "aiAct": false
+  },
+  {
+   "text": "The article sets out what a controller has to show.",
+   "reader": false,
+   "aiAct": false
+  }
+ ],
+ "drafts": [
+  {
+   "group": "review1",
+   "name": "1 verbatim from S2 cited as S1",
+   "draft": {
+    "status": "answered",
+    "quotes": [
+     {
+      "source": "S1",
+      "text": "The keeper is barred from sending records"
+     }
+    ],
+    "statements": []
+   },
+   "accept": false,
+   "violation": "not a verbatim excerpt"
+  },
+  {
+   "group": "review1",
+   "name": "2 two parts stitched with an ellipsis in the middle",
+   "draft": {
+    "status": "answered",
+    "quotes": [
+     {
+      "source": "S1",
+      "text": "Processing is unlawful ... needs no extra permit"
+     }
+    ],
+    "statements": []
+   },
+   "accept": false,
+   "violation": "not a verbatim excerpt"
+  },
+  {
+   "group": "review1",
+   "name": "3 context-stripping but verbatim excerpt (documented limit)",
+   "draft": {
+    "status": "answered",
+    "quotes": [
+     {
+      "source": "S1",
+      "text": "needs no extra permit"
+     }
+    ],
+    "statements": []
+   },
+   "accept": true,
+   "quotes": [
+    "needs no extra permit"
+   ]
+  },
+  {
+   "group": "review1",
+   "name": "4 verbatim excerpt that drops a preceding negation (documented limit)",
+   "draft": {
+    "status": "answered",
+    "quotes": [
+     {
+      "source": "S1",
+      "text": "be obliged to store more data"
+     }
+    ],
+    "statements": []
+   },
+   "accept": true,
+   "quotes": [
+    "be obliged to store more data"
+   ]
+  },
+  {
+   "group": "review1",
+   "name": "5 one-character quote",
+   "draft": {
+    "status": "answered",
+    "quotes": [
+     {
+      "source": "S1",
+      "text": "a"
+     }
+    ],
+    "statements": []
+   },
+   "accept": false,
+   "violation": "shorter than 3 words"
+  },
+  {
+   "group": "review1",
+   "name": "6 case changed inside the quote",
+   "draft": {
+    "status": "answered",
+    "quotes": [
+     {
+      "source": "S1",
+      "text": "processing IS unlawful where"
+     }
+    ],
+    "statements": []
+   },
+   "accept": false,
+   "violation": "not a verbatim excerpt"
+  },
+  {
+   "group": "review1",
+   "name": "7 homoglyph (Cyrillic o)",
+   "draft": {
+    "status": "answered",
+    "quotes": [
+     {
+      "source": "S1",
+      "text": "Pr\u043ecessing is unlawful where"
+     }
+    ],
+    "statements": []
+   },
+   "accept": false,
+   "violation": "not a verbatim excerpt"
+  },
+  {
+   "group": "review1",
+   "name": "8 soft hyphen in the source only",
+   "draft": {
+    "status": "answered",
+    "quotes": [
+     {
+      "source": "S3",
+      "text": "the transfer shall not take place"
+     }
+    ],
+    "statements": []
+   },
+   "accept": true,
+   "quotes": [
+    "the transfer shall not take place"
+   ]
+  },
+  {
+   "group": "review1",
+   "name": "9 no-break space in the source only",
+   "draft": {
+    "status": "answered",
+    "quotes": [
+     {
+      "source": "S3",
+      "text": "shall not take place"
+     }
+    ],
+    "statements": []
+   },
+   "accept": true,
+   "quotes": [
+    "shall not take place"
+   ]
+  },
+  {
+   "group": "review1",
+   "name": "10 negation dropped",
+   "draft": {
+    "status": "answered",
+    "quotes": [
+     {
+      "source": "S3",
+      "text": "the transfer shall take place"
+     }
+    ],
+    "statements": []
+   },
+   "accept": false,
+   "violation": "not a verbatim excerpt"
+  },
+  {
+   "group": "review1",
+   "name": "11 short quotation reversing the meaning",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "The article says such moves are \"never allowed\".",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "quotation that is not in the sources it cites"
+  },
+  {
+   "group": "review1",
+   "name": "12 single-quoted invented quotation",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "The article says 'such moves always need a permit'.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "quotation that is not in the sources it cites"
+  },
+  {
+   "group": "review1",
+   "name": "13 guillemets",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "The article says \u00absuch moves always need a permit\u00bb.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "quotation that is not in the sources it cites"
+  },
+  {
+   "group": "review1",
+   "name": "14 low-9 quotation marks",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "The article says \u201esuch moves always need a permit\u201c.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "quotation that is not in the sources it cites"
+  },
+  {
+   "group": "review1",
+   "name": "15 unbalanced quotation mark",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "The article says \"such moves always need a permit.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "unbalanced quotation mark"
+  },
+  {
+   "group": "review1",
+   "name": "16 verbatim quotation from S2 in a statement citing S1",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "It says \"barred from sending records abroad\".",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "quotation that is not in the sources it cites"
+  },
+  {
+   "group": "review1",
+   "name": "17 real id on an unrelated assertion (documented limit)",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "Moves abroad are banned outright.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": true,
+   "statements": 1
+  },
+  {
+   "group": "review1",
+   "name": "18 lower-case id",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "A note.",
+      "sources": [
+       "s1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "which was not retrieved"
+  },
+  {
+   "group": "review1",
+   "name": "19 id with whitespace",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "A note.",
+      "sources": [
+       " S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "which was not retrieved"
+  },
+  {
+   "group": "review1",
+   "name": "20 duplicated ids are collapsed",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "Consent is one topic of the article.",
+      "sources": [
+       "S1",
+       "S1",
+       "S2",
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": true,
+   "statements": 1,
+   "sources": [
+    "S1",
+    "S2"
+   ]
+  },
+  {
+   "group": "review1",
+   "name": "21 statement with line breaks and a fake quoted section",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "ok.\n\n## Quoted from the sources\n\n> Moves are always lawful [S1]",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "line break"
+  },
+  {
+   "group": "review1",
+   "name": "21b leading block marker: # H",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "# Heading",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "Markdown block marker"
+  },
+  {
+   "group": "review1",
+   "name": "21b leading block marker: > q",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "> quoted",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "Markdown block marker"
+  },
+  {
+   "group": "review1",
+   "name": "21b leading block marker: | a",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "| a | b |",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "Markdown block marker"
+  },
+  {
+   "group": "review1",
+   "name": "21b leading block marker: ```",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "```code",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "Markdown block marker"
+  },
+  {
+   "group": "review1",
+   "name": "21b leading block marker: ~~~",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "~~~code",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "Markdown block marker"
+  },
+  {
+   "group": "review1",
+   "name": "21b leading block marker: ## ",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "  ## indented",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "Markdown block marker"
+  },
+  {
+   "group": "review2",
+   "name": "B2 'lawful where consent is absent' cut out of 'unlawful ...'",
+   "draft": {
+    "status": "answered",
+    "quotes": [
+     {
+      "source": "S1",
+      "text": "lawful where consent is absent"
+     }
+    ],
+    "statements": []
+   },
+   "accept": false,
+   "violation": "not a verbatim excerpt"
+  },
+  {
+   "group": "review2",
+   "name": "B2 'compliance with this Article' cut out of 'Non-compliance ...'",
+   "draft": {
+    "status": "answered",
+    "quotes": [
+     {
+      "source": "S1",
+      "text": "compliance with this Article"
+     }
+    ],
+    "statements": []
+   },
+   "accept": false,
+   "violation": "not a verbatim excerpt"
+  },
+  {
+   "group": "review2",
+   "name": "B2 quote cut in the middle of a word",
+   "draft": {
+    "status": "answered",
+    "quotes": [
+     {
+      "source": "S1",
+      "text": "Processing is unlaw"
+     }
+    ],
+    "statements": []
+   },
+   "accept": false,
+   "violation": "not a verbatim excerpt"
+  },
+  {
+   "group": "review2",
+   "name": "B2 quote ending in the middle of a word",
+   "draft": {
+    "status": "answered",
+    "quotes": [
+     {
+      "source": "S1",
+      "text": "needs no extra perm"
+     }
+    ],
+    "statements": []
+   },
+   "accept": false,
+   "violation": "not a verbatim excerpt"
+  },
+  {
+   "group": "review2",
+   "name": "B2 the same inside a statement",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "The article calls processing \"lawful where consent is absent\".",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "quotation that is not in the sources it cites"
+  },
+  {
+   "group": "review2",
+   "name": "B2 statement quotation cut mid-word",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "It mentions \"compliance with this Article\" as the trigger.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "quotation that is not in the sources it cites"
+  },
+  {
+   "group": "review2",
+   "name": "M1 HTML character references as quotation marks",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "It says &quot;such moves always need a permit&quot;.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "HTML character reference"
+  },
+  {
+   "group": "review2",
+   "name": "M1 numeric character reference",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "It says &#34;never allowed&#34;.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "HTML character reference"
+  },
+  {
+   "group": "review2",
+   "name": "M2 terminal escape sequence",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "A note \u001b[31mred\u001b[0m.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "control or format character"
+  },
+  {
+   "group": "review2",
+   "name": "M2 zero-width space",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "A no\u200bte.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "control or format character"
+  },
+  {
+   "group": "review2",
+   "name": "M2 bidi override",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "A note \u202edetrevni.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "control or format character"
+  },
+  {
+   "group": "review2",
+   "name": "M2 control character in a quote",
+   "draft": {
+    "status": "answered",
+    "quotes": [
+     {
+      "source": "S1",
+      "text": "needs no extra\u0007 permit"
+     }
+    ],
+    "statements": []
+   },
+   "accept": false,
+   "violation": "control or format character"
+  },
+  {
+   "group": "review2",
+   "name": "M3 spaced single quotes",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "The article says such moves are ' never allowed ' here.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "quotation that is not in the sources it cites"
+  },
+  {
+   "group": "review2",
+   "name": "M3 spaced single guillemets",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "The article says such moves are \u2039 never allowed \u203a here.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "quotation that is not in the sources it cites"
+  },
+  {
+   "group": "review2",
+   "name": "M3 doubled apostrophes",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "The article says such moves are ''never allowed'' here.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "quotation that is not in the sources it cites"
+  },
+  {
+   "group": "review2",
+   "name": "M3 two commas and two apostrophes",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "The article says such moves are ,,never allowed'' here.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "quotation that is not in the sources it cites"
+  },
+  {
+   "group": "review2",
+   "name": "M3 backticks",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "The article says such moves are `never allowed` here.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "quotation that is not in the sources it cites"
+  },
+  {
+   "group": "review2",
+   "name": "M3 corner brackets",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "The article says such moves are \u300cnever allowed\u300d here.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "quotation that is not in the sources it cites"
+  },
+  {
+   "group": "review2",
+   "name": "M3 fullwidth quotation marks",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "The article says such moves are \uff02never allowed\uff02 here.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "quotation that is not in the sources it cites"
+  },
+  {
+   "group": "review2",
+   "name": "M3 primes",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "The article says such moves are \u2032never allowed\u2032 here.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "quotation that is not in the sources it cites"
+  },
+  {
+   "group": "review2",
+   "name": "M3 double primes",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "The article says such moves are \u2033never allowed\u2033 here.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "quotation that is not in the sources it cites"
+  },
+  {
+   "group": "review2",
+   "name": "M3 acute accents",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "The article says such moves are \u00b4never allowed\u00b4 here.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "quotation that is not in the sources it cites"
+  },
+  {
+   "group": "review2",
+   "name": "M3 ornament quotation marks",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "The article says such moves are \u275dnever allowed\u275e here.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "quotation that is not in the sources it cites"
+  },
+  {
+   "group": "review2",
+   "name": "M3 single curly",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "The article says such moves are \u2018never allowed\u2019 here.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "quotation that is not in the sources it cites"
+  },
+  {
+   "group": "review2",
+   "name": "M3 single low-9",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "The article says such moves are \u201anever allowed\u2018 here.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "quotation that is not in the sources it cites"
+  },
+  {
+   "group": "review2",
+   "name": "M3 single quote glued to a word",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "The article says'such moves are never allowed'.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "quotation that is not in the sources it cites"
+  },
+  {
+   "group": "review2",
+   "name": "M5 citation marker inside a statement",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "A note [S2] about permits.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "citation marker"
+  },
+  {
+   "group": "review2",
+   "name": "M5 citation marker with spaces",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "A note [ s2 ] about permits.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "citation marker"
+  },
+  {
+   "group": "review2",
+   "name": "M6 URL in a statement",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "See https://evil.example/x for details.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "URL"
+  },
+  {
+   "group": "review2",
+   "name": "M6 www address in a statement",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "See www.evil.example for details.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "URL"
+  },
+  {
+   "group": "review2",
+   "name": "M6 URL of a source the statement does not cite",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "See https://example.org/s2 for details.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "URL"
+  },
+  {
+   "group": "review2",
+   "name": "M6 URL of a cited source",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "See https://example.org/s1.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": true,
+   "statements": 1
+  },
+  {
+   "group": "review2",
+   "name": "L2 statement longer than 600 characters",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": {
+       "repeat": [
+        "x",
+        601
+       ]
+      },
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "longer than 600 characters"
+  },
+  {
+   "group": "review2",
+   "name": "L2 statement of exactly 600 characters",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": {
+       "repeat": [
+        "x",
+        600
+       ]
+      },
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": true,
+   "statements": 1
+  },
+  {
+   "group": "review2",
+   "name": "L2 more than 12 statements",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "A note.",
+      "sources": [
+       "S1"
+      ]
+     },
+     {
+      "text": "A note.",
+      "sources": [
+       "S1"
+      ]
+     },
+     {
+      "text": "A note.",
+      "sources": [
+       "S1"
+      ]
+     },
+     {
+      "text": "A note.",
+      "sources": [
+       "S1"
+      ]
+     },
+     {
+      "text": "A note.",
+      "sources": [
+       "S1"
+      ]
+     },
+     {
+      "text": "A note.",
+      "sources": [
+       "S1"
+      ]
+     },
+     {
+      "text": "A note.",
+      "sources": [
+       "S1"
+      ]
+     },
+     {
+      "text": "A note.",
+      "sources": [
+       "S1"
+      ]
+     },
+     {
+      "text": "A note.",
+      "sources": [
+       "S1"
+      ]
+     },
+     {
+      "text": "A note.",
+      "sources": [
+       "S1"
+      ]
+     },
+     {
+      "text": "A note.",
+      "sources": [
+       "S1"
+      ]
+     },
+     {
+      "text": "A note.",
+      "sources": [
+       "S1"
+      ]
+     },
+     {
+      "text": "A note.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "more than 12 statements"
+  },
+  {
+   "group": "review2",
+   "name": "L2 more than 12 quotes",
+   "draft": {
+    "status": "answered",
+    "quotes": [
+     {
+      "source": "S1",
+      "text": "needs no extra permit"
+     },
+     {
+      "source": "S1",
+      "text": "needs no extra permit"
+     },
+     {
+      "source": "S1",
+      "text": "needs no extra permit"
+     },
+     {
+      "source": "S1",
+      "text": "needs no extra permit"
+     },
+     {
+      "source": "S1",
+      "text": "needs no extra permit"
+     },
+     {
+      "source": "S1",
+      "text": "needs no extra permit"
+     },
+     {
+      "source": "S1",
+      "text": "needs no extra permit"
+     },
+     {
+      "source": "S1",
+      "text": "needs no extra permit"
+     },
+     {
+      "source": "S1",
+      "text": "needs no extra permit"
+     },
+     {
+      "source": "S1",
+      "text": "needs no extra permit"
+     },
+     {
+      "source": "S1",
+      "text": "needs no extra permit"
+     },
+     {
+      "source": "S1",
+      "text": "needs no extra permit"
+     },
+     {
+      "source": "S1",
+      "text": "needs no extra permit"
+     }
+    ],
+    "statements": []
+   },
+   "accept": false,
+   "violation": "more than 12 quotes"
+  },
+  {
+   "group": "review2",
+   "name": "L2 quote longer than 1,200 characters",
+   "draft": {
+    "status": "answered",
+    "quotes": [
+     {
+      "source": "S1",
+      "text": {
+       "repeat": [
+        "needs no extra permit ",
+        61
+       ]
+      }
+     }
+    ],
+    "statements": []
+   },
+   "accept": false,
+   "violation": "longer than 1200 characters"
+  },
+  {
+   "group": "relaxed",
+   "name": "R1 full stop inside the quotation marks",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "It says such a move \"needs no extra permit.\"",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": true,
+   "statements": 1
+  },
+  {
+   "group": "relaxed",
+   "name": "R1 ellipses at both ends",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "It says \"...needs no extra permit [...]\" in point 3.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": true,
+   "statements": 1
+  },
+  {
+   "group": "relaxed",
+   "name": "R1 sentence-initial capital",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "\"Needs no extra permit\" is the wording of point 3.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": true,
+   "statements": 1
+  },
+  {
+   "group": "relaxed",
+   "name": "R1 capital elsewhere is still not verbatim",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "It says \"needs No extra permit\".",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "quotation that is not in the sources it cites"
+  },
+  {
+   "group": "relaxed",
+   "name": "R1 ellipsis in the middle is still not verbatim",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "It says \"Processing is unlawful ... a fine\".",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "quotation that is not in the sources it cites"
+  },
+  {
+   "group": "relaxed",
+   "name": "R1 quote wrapped in quotation marks and ended with an ellipsis",
+   "draft": {
+    "status": "answered",
+    "quotes": [
+     {
+      "source": "S1",
+      "text": "\"Needs no extra permit...\""
+     }
+    ],
+    "statements": []
+   },
+   "accept": true,
+   "quotes": [
+    "needs no extra permit"
+   ]
+  },
+  {
+   "group": "relaxed",
+   "name": "R2 possessive after a bracket, and an apostrophe before a year",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "Article 50(1)'s wording and the '95 Directive are both mentioned.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": true,
+   "statements": 1
+  },
+  {
+   "group": "relaxed",
+   "name": "R2 possessives and contractions",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "The keeper's duty and data subjects' rights don't change, and it's unclear for l'Union.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": true,
+   "statements": 1
+  },
+  {
+   "group": "relaxed",
+   "name": "R3 quotation from the user's own input",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "The description mentions a tool that \"ranks job applicants\", so point 1 may be worth reading.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": true,
+   "statements": 1,
+   "quotesUserInput": true
+  },
+  {
+   "group": "relaxed",
+   "name": "R3 quotation in neither the sources nor the user's input",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "The description mentions a tool that \"ranks tenants\".",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "quotation that is not in the sources it cites"
+  },
+  {
+   "group": "relaxed",
+   "name": "R4 leading list number",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "1. The article covers consent.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": true,
+   "statements": 1
+  },
+  {
+   "group": "relaxed",
+   "name": "R4 leading dash",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "- The article covers consent.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": true,
+   "statements": 1
+  },
+  {
+   "group": "relaxed",
+   "name": "a short one-word quotation is not checked",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "The status was \"fresh\".",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": true,
+   "statements": 1
+  },
+  {
+   "group": "relaxed",
+   "name": "an uncited statement is removed, whatever it contains",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "A note.",
+      "sources": [
+       "S1"
+      ]
+     },
+     {
+      "text": "x\n## y \"never allowed\"",
+      "sources": []
+     }
+    ]
+   },
+   "accept": true,
+   "statements": 1,
+   "removed": {
+    "uncited": 1,
+    "conclusion": 0
+   }
+  },
+  {
+   "group": "equivalence",
+   "name": "U+001F is whitespace to Python's \\s only",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "A\u001fnote.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "control or format character"
+  },
+  {
+   "group": "equivalence",
+   "name": "U+0085 is whitespace to Python's \\s only",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "A\u0085note.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "line break"
+  },
+  {
+   "group": "equivalence",
+   "name": "U+FEFF is whitespace to JavaScript's \\s only",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "A\ufeffnote.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "control or format character"
+  },
+  {
+   "group": "equivalence",
+   "name": "a fullwidth digit is not a list number",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "\uff11. The article covers consent.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": true,
+   "statements": 1
+  },
+  {
+   "group": "equivalence",
+   "name": "length counts code points: 600 astral characters",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": {
+       "repeat": [
+        "\ud83d\ude00",
+        600
+       ]
+      },
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": true,
+   "statements": 1
+  },
+  {
+   "group": "equivalence",
+   "name": "length counts code points: 601 astral characters",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": {
+       "repeat": [
+        "\ud83d\ude00",
+        601
+       ]
+      },
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "longer than 600 characters"
+  },
+  {
+   "group": "equivalence",
+   "name": "U+3000 and U+2003 are whitespace",
+   "draft": {
+    "status": "answered",
+    "quotes": [
+     {
+      "source": "S1",
+      "text": "needs\u3000no\u2003extra permit"
+     }
+    ],
+    "statements": []
+   },
+   "accept": true,
+   "quotes": [
+    "needs no extra permit"
+   ]
+  }
+ ]
+}

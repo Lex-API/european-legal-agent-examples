@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 import pytest
@@ -61,7 +62,8 @@ def test_answers_with_quotes_from_the_gdpr_and_a_judgment(stub: StubServer, clie
     # No as_of was asked, so nothing is said about the text in force on a date.
     assert "in force on" not in md
     assert md.index("## Quoted from the sources") < md.index("## Summary (written by the model")
-    assert "(cited no source) Most companies rely on standard contractual clauses." in md
+    assert "- 1 statement(s) removed: cited no source." in md
+    assert "Most companies rely on standard contractual clauses" not in md
     assert "1 legislation hit(s) from acts other than the GDPR were not used." in md
     assert "ECLI:EU:T:2099:902: found by the search, but its text is not available (not_in_language)." in md
     assert "not legal advice" in md
@@ -172,3 +174,175 @@ def test_cli_dry_run_needs_no_keys(monkeypatch: pytest.MonkeyPatch, capsys: pyte
     assert out.out.startswith("> DRY RUN")
     assert "## Quoted from the sources" in out.out
     assert "credits reported for this run: 20" in out.err
+
+
+KNOWN_HEADINGS = {
+    "# GDPR research assistant",
+    "## Quoted from the sources",
+    "## Summary (written by the model - not legal text)",
+    "## Removed by the grounding check",
+    "## Sources",
+    "## Notices",
+    "## No supporting text found",
+    "## Retrieved sources (no model text)",
+}
+
+
+def assert_only_known_headings(markdown: str) -> None:
+    for line in re.split("[\n\r\u2028\u2029\u0085]", markdown):
+        if re.match(r"\s{0,3}#", line):
+            assert line in KNOWN_HEADINGS, f"unexpected heading: {line}"
+        assert not re.match(r'\s{0,3}>(?! ")', line), f"unexpected blockquote: {line}"
+
+
+def test_every_path_by_which_model_or_user_text_reaches_the_output_is_escaped_or_refused(client: LexAPI) -> None:
+    payload = "X **b** <i> # > | [S9] & `c` ~"
+    escaped = "X \\*\\*b\\*\\* \\<i\\> \\# \\> \\| \\[S9\\] \\& 'c' \\~"
+    broken = "X\n## Fake heading\n> fake quote"
+    good = script()["submit_answer"]
+    outputs: list[str] = []
+
+    def run(question: str, reply: Any, as_of: str | None = None) -> str:
+        result = answer_question(question, client=client, llm=ScriptedLlm({"submit_answer": reply}), as_of=as_of)
+        outputs.append(result.markdown)
+        return result.markdown
+
+    def answered(**parts: Any) -> dict[str, Any]:
+        return {"status": "answered", "quotes": [], "statements": [], **parts}
+
+    # 1. the user's question (it must still mention "transfer" for the stub to answer): printed, escaped.
+    assert f"**Question:** {escaped} transfer" in run(f"{payload} transfer", good)
+    # 2. a statement: the [S9] marker makes it a rejected draft; without it, it is printed escaped.
+    run(QUESTION, answered(statements=[{"text": payload, "sources": ["S1"]}]))
+    no_marker = payload.replace(" [S9]", "")
+    statement = run(QUESTION, answered(statements=[{"text": no_marker, "sources": ["S1"]}]))
+    assert "- " + escaped.replace(" \\[S9\\]", "") + " [S1]" in statement
+    # 3. a quote: only text found verbatim in the source is printed, taken from the source.
+    run(QUESTION, answered(quotes=[{"source": "S1", "text": payload}]))
+    # 4. removed statements (uncited, conclusion): counted, never printed.
+    removed = run(
+        QUESTION,
+        answered(
+            statements=[
+                {"text": payload, "sources": []},
+                {"text": f"You must {no_marker}", "sources": ["S1"]},
+                {"text": "A note.", "sources": ["S1"]},
+            ]
+        ),
+    )
+    assert "- 1 statement(s) removed: cited no source." in removed
+    assert "- 1 statement(s) removed: matched the conclusion filter." in removed
+    # 5. source ids, 6. fields of the wrong shape, 7. multi-line text in every field: refused.
+    run(QUESTION, answered(statements=[{"text": "A note.", "sources": [broken]}]))
+    run(QUESTION, {"status": broken, "quotes": [], "statements": []})
+    multi_line = answered(quotes=[{"source": "S1", "text": broken}], statements=[{"text": broken, "sources": ["S1"]}])
+    run(QUESTION, multi_line)
+
+    assert len(outputs) == 8
+    for markdown in outputs:
+        assert_only_known_headings(markdown)
+        assert "X **b**" not in markdown  # the raw payload never appears
+        assert "\n> fake quote" not in markdown
+
+
+E1 = "fixture wording about sending fixture data abroad when placeholder safeguards exist"
+F2 = "fixture wording saying no separate permission is needed in that case"
+
+# fmt: off
+WELL_BEHAVED: list[dict[str, Any]] = [
+    {
+        "quotes": [{"source": "S1", "text": E1}],
+        "statements": [
+            {"text": "Article 46 is the provision on safeguards for sending data abroad.", "sources": ["S1"]}
+        ],
+    },
+    {
+        "quotes": [{"source": "S2", "text": f"Placeholder provision F2: {F2}."}],
+        "statements": [
+            {"text": "Article 45's second provision says no separate permission is needed.", "sources": ["S2"]}
+        ],
+    },
+    {
+        "quotes": [{"source": "S1", "text": f'"{E1}"'}],
+        "statements": [
+            {
+                "text": 'The article speaks of "placeholder safeguards," and of remedies being available.',
+                "sources": ["S1"],
+            }
+        ],
+    },
+    {
+        "quotes": [{"source": "S4", "text": "...a level of protection comparable to the placeholder standard..."}],
+        "statements": [
+            {"text": "The Court's ground 3 and data subjects' position are linked in this passage.", "sources": ["S4"]}
+        ],
+    },
+    {
+        "quotes": [],
+        "statements": [
+            {
+                "text": 'The question asks when data may go to a "third country"; the two articles give two routes.',
+                "sources": ["S1", "S2"],
+            }
+        ],
+    },
+    {
+        "quotes": [{"source": "S1", "text": "Fixture wording about remedies being available"}],
+        "statements": [
+            {"text": '"Placeholder safeguards" are the condition named in Article 46.', "sources": ["S1"]},
+            {"text": "The 'adequacy finding' route (Article 45) is the other one.", "sources": ["S2"]},
+        ],
+    },
+    {
+        "quotes": [
+            {"source": "S5", "text": "weighing the fixture contract terms and the legal system of the third country"}
+        ],
+        "statements": [
+            {
+                "text": "Whether your transfer is covered depends on which route applies - that is for a lawyer to assess.",
+                "sources": ["S1", "S2", "S5"],
+            }
+        ],
+    },
+    {
+        "quotes": [{"source": "S3", "text": "the level of protection needed for a transfer to a third country"}],
+        "statements": [
+            {"text": "1. Ground 2 frames the issue as the level of protection needed.", "sources": ["S3"]},
+            {"text": "2. Ground 4 adds what is weighed.", "sources": ["S5"]},
+        ],
+    },
+    {
+        "quotes": [{"source": "S2", "text": "sending fixture data abroad after a placeholder adequacy finding"}],
+        "statements": [
+            {
+                "text": "The judgment (ECLI:EU:C:2099:901, paragraphs 2\u20134) deals with the \u201clevel of protection\u201d.",
+                "sources": ["S3", "S4", "S5"],
+            }
+        ],
+    },
+    {
+        "quotes": [
+            {
+                "source": "S4",
+                "text": "Placeholder ground 3: fixture wording saying the placeholder safeguards must give people",
+            }
+        ],
+        "statements": [
+            {
+                "text": "If a controller relies on safeguards, this ground may be the one to read first; it doesn't settle the question.",
+                "sources": ["S4"],
+            }
+        ],
+    },
+]
+# fmt: on
+
+
+def test_ten_well_behaved_drafts_are_all_accepted(client: LexAPI) -> None:
+    for number, parts in enumerate(WELL_BEHAVED, start=1):
+        llm = ScriptedLlm({"submit_answer": {"status": "answered", **parts}})
+        result = answer_question(QUESTION, client=client, llm=llm)
+        assert result.outcome == "answered", f"draft {number}: {llm.calls[-1].user.split('rejected:')[-1]}"
+        assert result.answer is not None
+        assert len(result.answer.statements) == len(parts["statements"]), f"draft {number} lost a statement"
+        assert len(result.answer.quotes) == len(parts["quotes"])

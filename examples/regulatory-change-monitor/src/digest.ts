@@ -9,8 +9,8 @@ import {
   GroundingError,
   STATEMENTS_SCHEMA,
   citation,
-  escapeMarkdown,
   parseDraft,
+  renderRemoved,
   renderStatement,
   sourcesForPrompt,
   validateDraft,
@@ -80,7 +80,8 @@ export async function buildDigest(input: DigestInput, llm: Llm): Promise<Digest>
   }
 
   const summary = answer.statements.map(renderStatement).join("\n");
-  const removed = answer.removed.length > 0 ? `\nRemoved by the grounding check (cited no source): ${answer.removed.map((r) => `"${escapeMarkdown(r.text)}"`).join("; ")}\n` : "";
+  const removedLines = renderRemoved(answer.removed);
+  const removed = removedLines.length > 0 ? `\nRemoved by the grounding check:\n${removedLines.join("\n")}\n` : "";
   const overflow = sources.length > forModel.length ? `\nThe summary covers the first ${forModel.length} of ${sources.length} documents.\n` : "";
   return {
     outcome: "summarised",

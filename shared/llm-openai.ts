@@ -35,7 +35,8 @@ export class OpenAiLlm implements Llm {
     });
 
     const message = completion.choices[0]?.message;
-    if (message?.refusal) throw new LlmError(`The model declined this request: ${message.refusal}`);
+    // The refusal text is model-written; it is not echoed into the error.
+    if (message?.refusal) throw new LlmError("The model declined this request.");
     const call = message?.tool_calls?.find((c) => c.type === "function" && c.function.name === request.tool.name);
     if (!call || call.type !== "function") throw new LlmError(`The model did not call the ${request.tool.name} function.`);
     try {

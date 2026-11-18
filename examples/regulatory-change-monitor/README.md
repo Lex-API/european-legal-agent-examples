@@ -45,20 +45,24 @@ Polling does not detect new consolidated versions; webhook watch lists do.
 
 `src/digest.ts` prints the list of documents in code, straight from the API records, each with
 its CELEX number and EUR-Lex link. The model only adds a short summary on top: statements with
-source ids, nothing else. The same check as in the other examples (`shared/grounding.ts`) applies
-to them:
+source ids, nothing else. The same check as in the other examples (`shared/grounding.ts`) applies.
+It **rejects** the summary if:
 
-- a statement citing a document that is not in the list is rejected;
-- a quotation inside a statement (two words or more, or eight characters or more, in any style of
-  quotation marks) must be verbatim in a record that statement cites, and quotation marks must
-  be balanced;
-- a statement must be one line of plain text (no line break, no leading heading, blockquote,
-  list, table or code-fence marker);
-- statements without a source are removed and listed.
+- a statement cites a document that is not in the list;
+- a quotation inside a statement (two words or more, or eight characters or more) is not
+  verbatim, on word boundaries, in a record that statement cites, or a quotation mark is left open;
+- a statement contains a line break or a control or format character, or starts with a heading,
+  blockquote, table or code-fence marker;
+- a statement contains an HTML character reference, a citation marker of its own (`[S1]`), or a
+  URL that is not the URL of a record it cites;
+- there are more than 12 statements, or one is longer than 600 characters.
 
-A rejected summary is retried once; after that the list is shown without a summary. Markdown in
-the summary is escaped when it is printed. When nothing is new, the digest says so and the model
-is not called.
+Statements without a source are removed and counted, not printed. The quotation-mark styles
+recognised are listed in the [AI Act example's README](../ai-act-provision-finder/README.md).
+
+A rejected summary is retried once; after that the list is shown without a summary. The summary
+is printed through the same escaping function as all other model text. When nothing is new, the
+digest says so and the model is not called.
 
 The check cannot tell whether a sentence describes its cited records correctly.
 
@@ -104,7 +108,7 @@ separately by your model provider.
 
 `npm test` runs `test/monitor.test.ts` offline: baseline on first poll, only-new on later polls,
 stale-relation notices, the cited digest, the nothing-new path, rejection of an ungrounded summary
-and of a summary shaped like Markdown, "not reported" credits, signature verification (valid,
+and of a summary shaped like Markdown, ten well-behaved summaries, "not reported" credits, signature verification (valid,
 tampered, wrong secret, missing, re-serialised body, stale timestamp, empty secret), duplicate
 deliveries and the bound on remembered ids, the HTTP receiver on 127.0.0.1 (200, 401, 405, 413),
 and webhook setup against the stub. Not covered by any test: the live API, real deliveries and a real model.
@@ -141,7 +145,8 @@ Generated 2026-11-18T08:00:00.000Z from polling. Model: scripted (no model was c
 - Two regulations were picked up under the "New regulations" topic. [S3][S4]
 - One Commission communication has artificial intelligence in its title. [S5]
 
-Removed by the grounding check (cited no source): "More changes are expected next month."
+Removed by the grounding check:
+- 1 statement(s) removed: cited no source.
 
 ## Notices
 

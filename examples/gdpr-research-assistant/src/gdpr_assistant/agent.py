@@ -16,6 +16,7 @@ from typing import Literal
 
 from lexapi import LexAPI
 
+from gdpr_assistant.conclusions import READER_PATTERNS
 from gdpr_assistant.grounding import (
     DRAFT_SCHEMA,
     GroundedAnswer,
@@ -28,6 +29,7 @@ from gdpr_assistant.grounding import (
 )
 from gdpr_assistant.llm import Llm, LlmRequest
 from gdpr_assistant.retrieve import retrieve
+from gdpr_assistant.text import plain_text
 
 SYSTEM = """You answer research questions about the General Data Protection Regulation \
 (Regulation (EU) 2016/679) and the case law of the Court of Justice of the European Union.
@@ -65,8 +67,8 @@ def answer_question(question: str, *, client: LexAPI, llm: Llm, as_of: str | Non
     # 1. Retrieve ------------------------------------------------------------
     found = retrieve(client, question, as_of)
     sources = found.sources
-    scope = f" (as of {as_of})" if as_of else ""
-    header = f"# GDPR research assistant\n\n**Question{scope}:** {question}\n\nModel: {llm.label}.\n\n"
+    scope = f" (as of {plain_text(as_of)})" if as_of else ""
+    header = f"# GDPR research assistant\n\n**Question{scope}:** {plain_text(question)}\n\nModel: {llm.label}.\n\n"
 
     if not sources:
         # The "no supporting text found" path: say so; do not ask the model to fill the gap.
@@ -79,8 +81,9 @@ def answer_question(question: str, *, client: LexAPI, llm: Llm, as_of: str | Non
     # 2 + 3. Draft, then check (one retry with the violations fed back) --------
     user = (
         f"Question: {question}\n\nSources:\n\n{sources_for_prompt(sources)}\n\n"
-        "Answer from these sources only. Copy quotes exactly, one line each. Write each sentence as one line "
-        "of plain text and give it its source ids."
+        "Answer from these sources only. Copy quotes exactly, whole words, one line each. Write each sentence as "
+        "one line of plain text (no Markdown, no URLs) and give it its source ids. Put quotation marks only around "
+        "words copied exactly from a source or from the question."
     )
     answer: GroundedAnswer | None = None
     feedback = ""
@@ -95,7 +98,7 @@ def answer_question(question: str, *, client: LexAPI, llm: Llm, as_of: str | Non
             )
         )
         try:
-            answer = validate_draft(raw, sources)
+            answer = validate_draft(raw, sources, user_text=question, conclusion_patterns=READER_PATTERNS)
             break
         except GroundingError as error:
             rejected = "\n- ".join(error.violations)

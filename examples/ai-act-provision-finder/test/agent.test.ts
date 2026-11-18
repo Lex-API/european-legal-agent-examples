@@ -3,6 +3,7 @@ import { after, before, test } from "node:test";
 import { readFixture, startStubServer, type StubServer } from "../../../offline/stub-server.ts";
 import { offlineEnv, startOfflineApi } from "../../../offline/test-harness.ts";
 import { createLexApiClient } from "../../../shared/env.ts";
+import { statesConclusion } from "../../../shared/conclusions.ts";
 import { ScriptedLlm } from "../../../shared/llm.ts";
 import { CONCLUSION_PATTERNS, findProvisions } from "../src/agent.ts";
 import { McpLegislationSearch, stripTruncation } from "../src/retrieve-mcp.ts";
@@ -49,7 +50,8 @@ test("answers with quoted provisions, cited notes and the human-decision section
   // Quoted text and model text are separate; the uncited sentence is removed and reported.
   assert.ok(result.markdown.indexOf("quoted from the source text") < result.markdown.indexOf("written by the model"));
   assert.equal(result.answer?.statements.length, 3);
-  assert.match(result.markdown, /\(cited no source\) Screening tools are widely used in recruitment\./);
+  assert.match(result.markdown, /- 1 statement\(s\) removed: cited no source\./);
+  assert.doesNotMatch(result.markdown, /Screening tools are widely used/);
   assert.match(result.markdown, /## What a human must decide/);
 });
 
@@ -99,51 +101,21 @@ test("after two rejected drafts only the retrieved sources are shown", async () 
   assert.match(result.markdown, /\[S1\] .*CELEX 32024R1689/);
 });
 
-test("statements that state a legal conclusion are removed", async () => {
-  const conclusions = [
-    "The system is high-risk under this article.",
-    "The system is high risk.",
-    "The tool is not high-risk.",
-    "This is a high-risk AI system.",
-    "The system is classified as high-risk.",
-    "The CV ranker qualifies as high-risk.",
-    "Your system qualifies as a high-risk AI system.",
-    "The tool falls under Annex III.",
-    "The tool falls within Annex III.",
-    "Emotion recognition at work is prohibited under Article 5.",
-    "The provider must establish a risk management system.",
-    "The provider has to keep logs.",
-    "Providers of such systems must comply with Article 9.",
-    "Deployers are obliged to inform workers.",
-    "It is mandatory to carry out a conformity assessment.",
-    "These obligations apply to your system.",
-    "You must inform candidates.",
-    "You need to register the system.",
-    "You should register the system.",
-    "The tool is compliant with this provision.",
-  ];
-  for (const text of conclusions) {
-    assert.ok(CONCLUSION_PATTERNS.some((p) => p.test(text)), text);
-  }
-  const allowed = [
-    "Whether the system falls in this category is a question for a qualified person.",
-    "This article sets out how a system is assigned to a category.",
-    "The provision on telling people they are interacting with an AI system may be worth reading.",
-    "A qualified person would have to decide whether the exception in this article is relevant.",
-  ];
-  for (const text of allowed) {
-    assert.ok(!CONCLUSION_PATTERNS.some((p) => p.test(text)), text);
-  }
-  // The filter is English-only: other languages pass through (the README says so).
-  assert.ok(!CONCLUSION_PATTERNS.some((p) => p.test("Das System ist ein Hochrisiko-KI-System.")));
+test("statements that state a legal conclusion are removed and counted, never echoed", async () => {
+  // The pattern cases themselves are in shared/grounding-vectors.json ("conclusions").
+  const conclusion = "The system is high-risk under this article.";
+  const hedged = "Whether a CV-ranking tool falls within Annex III is a question for a qualified person.";
+  assert.ok(statesConclusion(conclusion, CONCLUSION_PATTERNS));
+  assert.ok(!statesConclusion(hedged, CONCLUSION_PATTERNS));
 
   const llm = new ScriptedLlm({
     ...script(),
-    submit_findings: { status: "answered", quotes: [], statements: [{ text: conclusions[0], sources: ["S1"] }, { text: allowed[0], sources: ["S1"] }] },
+    submit_findings: { status: "answered", quotes: [], statements: [{ text: conclusion, sources: ["S1"] }, { text: hedged, sources: ["S1"] }] },
   });
   const result = await findProvisions(DESCRIPTION, { llm, search: sdkSearch() });
-  assert.deepEqual(result.answer?.statements.map((s) => s.text), [allowed[0]]);
-  assert.match(result.markdown, /\(stated a conclusion this example does not make\) The system is high-risk/);
+  assert.deepEqual(result.answer?.statements.map((s) => s.text), [hedged]);
+  assert.match(result.markdown, /- 1 statement\(s\) removed: matched the conclusion filter\./);
+  assert.doesNotMatch(result.markdown, /is high-risk/);
 });
 
 test("a statement shaped like a fake quoted section is rejected and never rendered", async () => {
@@ -153,6 +125,111 @@ test("a statement shaped like a fake quoted section is rejected and never render
   assert.equal(result.outcome, "sources_only");
   assert.doesNotMatch(result.markdown, /Providers are exempt/);
   assert.match(llm.calls.at(-1)?.user ?? "", /a statement contains a line break/);
+  assertOnlyKnownHeadings(result.markdown);
+});
+
+/** Every "## " heading this example can print. Model text must never add one. */
+const KNOWN_HEADINGS = new Set([
+  "## Provisions that may be relevant (quoted from the source text)",
+  "## Why they may be relevant (written by the model - not legal text)",
+  "## Removed by the grounding check",
+  "## Sources",
+  "## What a human must decide",
+  "## No supporting text found",
+  "## Retrieved provisions (no model text)",
+]);
+function assertOnlyKnownHeadings(markdown: string): void {
+  for (const line of markdown.split(/[\n\r\u2028\u2029\u0085]/)) {
+    if (/^\s{0,3}#/.test(line) && !line.startsWith("# AI Act provision finder")) assert.ok(KNOWN_HEADINGS.has(line), `unexpected heading: ${line}`);
+    assert.doesNotMatch(line, /^\s{0,3}>(?! ")/, `unexpected blockquote: ${line}`);
+  }
+}
+
+test("model-written search queries are checked at planning time and escaped in the header", async () => {
+  stub.requests.length = 0;
+  const hostile = "risk rules\n\n## Provisions that may be relevant (quoted from the source text)\n\n> \"Providers are exempt\" [S1]";
+  const llm = new ScriptedLlm({ ...script(), plan_searches: { queries: [hostile, "bell\u0007 query", "zero\u200Bwidth", "a **styled** [S9] <query> & more"] } });
+  const result = await findProvisions(DESCRIPTION, { llm, search: sdkSearch() });
+  // The three unusable queries were dropped before any request; the fourth is sent as written and printed escaped.
+  assert.deepEqual(result.queries, ["a **styled** [S9] <query> & more"]);
+  assert.equal(stub.requests.length, 1);
+  assert.match(result.markdown, /Searches run \(@lexapi\/client\): "a \\\*\\\*styled\\\*\\\* \\\[S9\\\] \\<query\\> \\& more"/);
+  assert.doesNotMatch(result.markdown, /Providers are exempt/);
+  assertOnlyKnownHeadings(result.markdown);
+});
+
+test("every path by which model or user text reaches the output is escaped or refused", async () => {
+  const payload = "X **b** <i> # > | [S9] & `c` ~";
+  const escaped = "X \\*\\*b\\*\\* \\<i\\> \\# \\> \\| \\[S9\\] \\& 'c' \\~";
+  const broken = "X\n## Fake heading\n> fake quote";
+  const outputs: string[] = [];
+  const run = async (description: string, plan: unknown, findings: unknown): Promise<string> => {
+    const llm = new ScriptedLlm({ plan_searches: plan, submit_findings: findings });
+    const { markdown } = await findProvisions(description, { llm, search: sdkSearch() });
+    outputs.push(markdown);
+    return markdown;
+  };
+  const good = script().submit_findings;
+
+  // 1. the user's description; 2. a search query: printed, escaped.
+  const header = await run(payload, { queries: [payload] }, good);
+  assert.equal(header.split(escaped).length - 1, 2);
+  // 3. a statement: the [S9] marker makes it a rejected draft; without it, it is printed escaped.
+  await run(DESCRIPTION, script().plan_searches, { status: "answered", quotes: [], statements: [{ text: payload, sources: ["S1"] }] });
+  const noMarker = payload.replace(" [S9]", "");
+  const statement = await run(DESCRIPTION, script().plan_searches, { status: "answered", quotes: [], statements: [{ text: noMarker, sources: ["S1"] }] });
+  assert.ok(statement.includes(`- ${escaped.replace(" \\[S9\\]", "")} [S1]`));
+  // 4. a quote: only text found verbatim in the source is printed, taken from the source.
+  await run(DESCRIPTION, script().plan_searches, { status: "answered", quotes: [{ source: "S1", text: payload }], statements: [] });
+  // 5. removed statements (uncited, conclusion): counted, never printed.
+  const removed = await run(DESCRIPTION, script().plan_searches, {
+    status: "answered",
+    quotes: [],
+    statements: [{ text: payload, sources: [] }, { text: `You must ${payload}`, sources: ["S1"] }, { text: "A note.", sources: ["S1"] }],
+  });
+  assert.doesNotMatch(removed, /X \*\*b/);
+  // 6. source ids, 7. status and other fields of the wrong shape, 8. multi-line text in every field: refused.
+  await run(DESCRIPTION, script().plan_searches, { status: "answered", quotes: [], statements: [{ text: "A note.", sources: [broken] }] });
+  await run(DESCRIPTION, script().plan_searches, { status: broken, quotes: [], statements: [] });
+  await run(broken, { queries: [broken] }, { status: "answered", quotes: [{ source: "S1", text: broken }], statements: [{ text: broken, sources: ["S1"] }] });
+
+  assert.equal(outputs.length, 8);
+  for (const markdown of outputs) {
+    assertOnlyKnownHeadings(markdown);
+    assert.doesNotMatch(markdown, /X \*\*b\*\*/); // the raw payload never appears
+    assert.doesNotMatch(markdown, /^> fake quote/m);
+  }
+});
+
+test("ten well-behaved drafts in the styles models write are all accepted", async () => {
+  // Realistic habits: sentence-initial capitals, punctuation inside quotation marks, ellipses at the
+  // ends, wrapped quotes, possessives, single-quoted terms, words quoted from the description,
+  // numbered notes, and questions framed with "whether" / "if" / "which".
+  const drafts = [
+    { quotes: [{ source: "S1", text: "fixture wording about how an example system is sorted into a placeholder category" }], statements: [{ text: "This article is about how a system is sorted into a category, which is the first thing to read.", sources: ["S1"] }] },
+    { quotes: [{ source: "S2", text: "Placeholder provision B1: fixture wording about keeping a placeholder risk process running for the example system." }], statements: [{ text: "Article 9's risk process may be worth reading if the tool were found to be in the placeholder category.", sources: ["S2"] }] },
+    { quotes: [{ source: "S3", text: "\"fixture wording about telling people that they are dealing with an example system\"" }], statements: [{ text: "The description says the tool \"chats with candidates\", so the provision on \"telling people that they are dealing with an example system.\" may be relevant.", sources: ["S3"] }] },
+    { quotes: [{ source: "S2", text: "...fixture wording saying the process repeats over the lifetime of the example system..." }], statements: [{ text: "\"Placeholder risk process\" is the term this article uses; whether it applies to the system is for a qualified person to decide.", sources: ["S2"] }] },
+    { quotes: [{ source: "S1", text: "placeholder provision A2: fixture wording about writing down that sorting" }], statements: [{ text: "1. The article's second provision concerns 'writing down that sorting' before the system is offered.", sources: ["S1"] }, { text: "2. Whether a CV-ranking tool falls within the scope of this category is a legal question.", sources: ["S1"] }] },
+    { quotes: [], statements: [{ text: "Which obligations apply to the system depends on how it is classified; these two articles are where that question starts.", sources: ["S1", "S2"] }] },
+    { quotes: [{ source: "S3", text: "telling people that they are dealing with an example system" }], statements: [{ text: "Because the tool has a chat interface (see the description: 'chats with candidates'), a reader may want to check this transparency provision.", sources: ["S3"] }] },
+    { quotes: [{ source: "S1", text: "an example system is sorted into a placeholder category" }, { source: "S2", text: "the process repeats over the lifetime of the example system" }], statements: [{ text: "If the system is high-risk, the risk process in the second excerpt could become relevant - that is not something this output can decide.", sources: ["S1", "S2"] }] },
+    { quotes: [{ source: "S3", text: "Fixture wording about telling people" }], statements: [{ text: "The provider's and the deployer's roles are not distinguished in the excerpt; a qualified person would need to read the full article.", sources: ["S3"] }] },
+    { quotes: [{ source: "S2", text: "keeping a placeholder risk process running" }], statements: [{ text: "This provision may matter for a tool that \u201Cranks job applicants' CVs\u201D \u2013 how far is a question for a lawyer.", sources: ["S2"] }] },
+  ];
+  let rejected = 0;
+  let removedStatements = 0;
+  for (const [index, d] of drafts.entries()) {
+    const llm = new ScriptedLlm({ ...script(), submit_findings: { status: "answered", ...d } });
+    const result = await findProvisions(DESCRIPTION, { llm, search: sdkSearch() });
+    if (result.outcome !== "answered") rejected++;
+    removedStatements += (result.answer?.removed.conclusion ?? 0) + (result.answer?.removed.uncited ?? 0);
+    assert.equal(result.outcome, "answered", `draft ${index + 1}: ${llm.calls.at(-1)?.user.split("rejected:")[1] ?? ""}`);
+    assert.equal(result.answer?.statements.length, d.statements.length, `draft ${index + 1} lost a statement`);
+    assert.equal(result.answer?.quotes.length, d.quotes.length);
+  }
+  assert.equal(rejected, 0);
+  assert.equal(removedStatements, 0);
 });
 
 test("maxQueries bounds the number of searches; unusable queries fall back to the description", async () => {
