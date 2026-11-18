@@ -26,7 +26,7 @@ from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatResult
 from pydantic import Field
 
-from dora_rag import rag
+from dora_rag import cli, offline
 
 # Before anything can read them.
 os.environ["LANGCHAIN_TRACING_V2"] = "false"
@@ -79,19 +79,10 @@ def _env(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in ("ANTHROPIC_API_KEY", "ANTHROPIC_MODEL", "OPENAI_API_KEY", "LANGCHAIN_API_KEY", "LANGSMITH_API_KEY"):
         monkeypatch.delenv(name, raising=False)
     # A developer's .env must not leak into the tests.
-    monkeypatch.setattr(rag, "load_env_file", lambda path: None)
+    monkeypatch.setattr(cli, "load_env_file", lambda path: None)
 
 
-def search_reply(as_of: str | None) -> dict[str, Any]:
-    """The synthetic DORA search answer, echoing the date asked."""
-    if as_of is None:
-        loaded: dict[str, Any] = rag.read_fixture("legislation-semantic.dora.json")
-        return loaded
-    body: dict[str, Any] = rag.read_fixture("legislation-semantic.dora-asof.json")
-    body["asOf"] = as_of
-    for hit in body["results"]:
-        hit["asOf"] = as_of
-    return body
+search_reply = offline.search_reply
 
 
 Reply = Callable[[dict[str, Any]], tuple[int, Any]]

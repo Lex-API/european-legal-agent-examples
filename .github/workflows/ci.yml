@@ -67,6 +67,8 @@ jobs:
       # langchain-lexapi is installed from its repository (it is not on PyPI yet).
       # Probe anonymously - no token, no credential helper, no prompt - whether
       # that repository is reachable; if not, skip the rest instead of failing.
+      # Remove this probe and the `if:` conditions once the repository is public,
+      # so that a failed probe can never hide a failing job.
       - id: adapter
         env:
           GIT_TERMINAL_PROMPT: "0"

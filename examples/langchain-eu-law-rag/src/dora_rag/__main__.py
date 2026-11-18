@@ -1,3 +1,3 @@
-from dora_rag.rag import main
+from dora_rag.cli import main
 
 raise SystemExit(main())

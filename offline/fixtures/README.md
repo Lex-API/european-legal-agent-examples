@@ -9,3 +9,6 @@ Every placeholder text starts with `[SYNTHETIC FIXTURE`.
 - `routes.json` maps a request (method, path, optional body/query substring) to a fixture file.
   Both stub servers (`offline/stub-server.ts` and `gdpr_assistant/offline.py`) read it.
 - `llm/` holds the scripted model replies used by `--dry-run` and the tests.
+- `legislation-semantic.dora.json`, `legislation-semantic.dora-asof.json` and `llm/dora.json` are
+  for the LangChain example. Its own mock transport (`examples/langchain-eu-law-rag/src/dora_rag/offline.py`)
+  serves them, not `routes.json`; it copies the date asked into the as-of fixture's `asOf` fields.

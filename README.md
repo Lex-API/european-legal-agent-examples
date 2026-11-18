@@ -4,9 +4,9 @@ Small, runnable example agents that ground their answers in citable EU law using
 [LexAPI](https://lex-api.com/?ref=github-examples) - EUR-Lex legislation parsed to article level,
 CJEU case law, a citation graph and semantic search behind one REST API.
 
-Each example is an explicit loop you can read top to bottom - retrieve, quote, answer with
-citations, and say so when the sources do not support an answer - with a check in code that every
-citation points at a source that was actually retrieved.
+Each example is an explicit loop you can read top to bottom - retrieve, answer with citations
+(the first three quote their sources verbatim), and say so when the sources do not support an
+answer - with a check in code that every citation points at a source that was actually retrieved.
 
 ## Examples
 
@@ -15,7 +15,7 @@ citation points at a source that was actually retrieved.
 | [AI Act provision finder](examples/ai-act-provision-finder) | TypeScript | Describe an AI system; get the AI Act articles that may be relevant, quoted with article-level citations, and what a human must decide. It finds provisions to read, not the obligations that apply. Also runs through the MCP server. | 15 (5 per search) |
 | [GDPR research assistant](examples/gdpr-research-assistant) | Python | Ask a question; get quotations from the GDPR and CJEU judgments with CELEX / ECLI and links, optionally for the text in force on a date. | 12-20 (up to 35 with `--as-of`) |
 | [Regulatory change monitor](examples/regulatory-change-monitor) | TypeScript | Watch acts and topics for new or changed documents; get a cited digest. Polling by default, signed webhooks on paid plans. | 8 for the example watch list |
-| [DORA questions answered from cited passages](examples/langchain-eu-law-rag) | Python (LangChain) | Ask about DORA; a LangChain retriever fetches the articles, each with its Source line, and the model answers from them with `[1]`-style citations. Optionally for a date: passages without text for that date arrive as notices. Prints the credits used. | 5 (up to 20 with `--as-of`) |
+| [DORA questions answered from cited passages](examples/langchain-eu-law-rag) | Python (LangChain) | RAG over EU law with LangChain: ask about DORA; the official retriever fetches the articles, each with its Source line (CELEX, article, EUR-Lex link), and the model answers with `[1]`-style citations. Optionally for a date: passages without text for that date arrive as notices. Prints the credits used. | 5 (up to 20 with `--as-of`) |
 
 Credit figures are computed from the weights in the
 [API reference](https://lex-api.com/docs?ref=github-examples); each example's README shows the
@@ -58,8 +58,9 @@ on FREE, and webhooks need a paid plan (the change monitor's polling mode does n
 ## How the examples stay grounded
 
 This section describes the first three examples. The LangChain example is a plain retrieval
-pipeline: the model writes free text citing passages by number, and code checks only that each
-number is a passage that was retrieved (see its README).
+pipeline: the model writes free text citing passages as `[n]`, and code checks only its citations:
+every bracketed number must be a plain `[n]` naming a retrieved passage, and the answer must cite at
+least one (see its README).
 
 - **Sources get run-local ids.** Retrieved articles, judgment paragraphs and document records are
   numbered `S1`, `S2`, ... and those ids are the only way the model can refer to them.
@@ -95,8 +96,8 @@ it cites. That is why the quotes are always shown next to it.
 
 - **Not compliance tools.** LexAPI provides source texts and citations. It does not assess whether
   anyone complies with the law, and neither do these examples.
-- **Not legal advice,** and not a substitute for a lawyer. They show text and say what a human
-  has to decide.
+- **Not legal advice,** and not a substitute for a lawyer. They show text with its source and,
+  where the example covers it, say what a human has to decide.
 - **Not authoritative texts.** Consolidated versions are documentation tools; the authentic act is
   the one published in the Official Journal. Always check the linked source.
 - **Not complete.** An example sees only what its searches returned.
