@@ -1,0 +1,23 @@
+{
+  "success": true,
+  "document": "32016R0679",
+  "act": {
+    "celex": "32016R0679"
+  },
+  "language": "en",
+  "asOf": "2099-06-01",
+  "asOfResolved": false,
+  "asOfReason": "amendment_not_consolidated",
+  "provenance": {
+    "sourceUrl": "https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32016R0679"
+  },
+  "credits": {
+    "operation_weight": 1,
+    "current": 1,
+    "limit": 500,
+    "remaining": 499,
+    "included": 500,
+    "topup": 0,
+    "resetsAt": "2026-12-01T00:00:00.000Z"
+  }
+}

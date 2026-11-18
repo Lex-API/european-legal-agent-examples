@@ -1,0 +1,42 @@
+{
+  "success": true,
+  "document": "32016R0679",
+  "act": {
+    "celex": "32016R0679",
+    "dateOfDocument": null,
+    "entryIntoForce": null,
+    "endOfValidity": null,
+    "inForceToday": null
+  },
+  "language": "en",
+  "asOf": "2099-06-01",
+  "asOfResolved": true,
+  "asOfVersion": {
+    "celex": "02016R0679-20990101",
+    "kind": "consolidated",
+    "date": "2099-01-01",
+    "validUntil": null
+  },
+  "provision": {
+    "id": "art_17",
+    "number": "Article 17",
+    "title": "(fixture title)",
+    "text": "[SYNTHETIC FIXTURE - not the text of the act] Placeholder provision G1 (consolidated placeholder): fixture wording about a placeholder request that a placeholder body handles."
+  },
+  "consolidated": true,
+  "provenance": {
+    "sourceUrl": "https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:02016R0679-20990101"
+  },
+  "credits": {
+    "operation_weight": 4,
+    "current": 4,
+    "limit": 500,
+    "remaining": 496,
+    "included": 500,
+    "topup": 0,
+    "resetsAt": "2026-12-01T00:00:00.000Z"
+  },
+  "consolidatedAsOf": "2099-01-01",
+  "baseCelex": "32016R0679",
+  "consolidatedNote": "[SYNTHETIC FIXTURE] The act as amended, consolidated as of 2099-01-01; not the authentic text. Only the act as published in the Official Journal is authentic (32016R0679)."
+}

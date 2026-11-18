@@ -23,6 +23,8 @@ SYSTEM_PROMPT = resources.files("dora_rag").joinpath("prompt.txt").read_text(enc
 HUMAN_PROMPT = "Date asked: {date}\n\nPassages:\n\n{passages}\n\nQuestion: {question}"
 PROMPT = ChatPromptTemplate.from_messages([SystemMessage(content=SYSTEM_PROMPT), ("human", HUMAN_PROMPT)])
 
+# The citation check (_BRACKETS to check_citations) is kept identical in examples/llamaindex-law-on-a-date;
+# that example's tests/test_citations.py checks that the two copies match.
 # Opening and closing brackets that a citation could be written with.
 _BRACKETS = {
     "[": "]",
