@@ -1,0 +1,7 @@
+{
+  "service": "LexAPI",
+  "version": "2.0.0",
+  "subscription": { "tier": "FREE", "pricingMode": "credits", "monthlyCredits": 150, "rateLimit": "15 requests/minute" },
+  "usage": { "current": 0, "limit": 500, "remaining": 500, "unit": "credits", "resetsAt": "2026-12-01T00:00:00.000Z" },
+  "credits": { "operation_weight": 0, "current": 0, "limit": 500, "remaining": 500, "included": 500, "topup": 0, "resetsAt": "2026-12-01T00:00:00.000Z" }
+}

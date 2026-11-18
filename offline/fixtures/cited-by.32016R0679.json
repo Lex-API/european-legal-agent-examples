@@ -1,0 +1,43 @@
+{
+  "success": true,
+  "targetDocument": "32016R0679",
+  "totalCitations": 2,
+  "totalEdges": 2,
+  "countsSource": "counted",
+  "uniqueDocuments": 2,
+  "limit": 100,
+  "offset": 0,
+  "citedBy": [
+    {
+      "id": "32016R0679R(02)",
+      "jurisdiction": "EU",
+      "documentKind": null,
+      "celexNumber": "32016R0679R(02)",
+      "title": "Corrigendum to Regulation (EU) 2016/679 [fixture title]",
+      "titleSource": "corpus",
+      "hasResume": false,
+      "hasSummary": false,
+      "citationCount": 1,
+      "citations": [
+        { "citationType": "corrigendum", "contextSnippet": null, "extractedAt": "2026-10-01T09:00:00.000Z", "provenance": "cellar", "resolution": null }
+      ]
+    },
+    {
+      "id": "32099R0001",
+      "jurisdiction": "EU",
+      "documentKind": null,
+      "celexNumber": "32099R0001",
+      "title": "Regulation (EU) 2099/1 amending Regulation (EU) 2016/679 [fixture title]",
+      "titleSource": "corpus",
+      "hasResume": false,
+      "hasSummary": false,
+      "citationCount": 1,
+      "citations": [
+        { "citationType": "amendment", "contextSnippet": null, "extractedAt": "2026-11-10T09:00:00.000Z", "provenance": "cellar", "resolution": null }
+      ]
+    }
+  ],
+  "relationSync": { "source": "cellar", "status": "fresh", "syncedAt": "2026-11-17T09:12:00.000Z" },
+  "subscription": { "tier": "FREE" },
+  "credits": { "operation_weight": 1, "current": 1, "limit": 500, "remaining": 499, "included": 500, "topup": 0, "resetsAt": "2026-12-01T00:00:00.000Z" }
+}

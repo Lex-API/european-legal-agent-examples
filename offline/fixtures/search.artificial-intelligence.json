@@ -1,0 +1,31 @@
+{
+  "searchParameters": { "query": "\"artificial intelligence\"", "dateFrom": "2026-11-11" },
+  "totalResults": 2,
+  "totalPages": 1,
+  "pagesFetched": 1,
+  "resultCount": 2,
+  "results": [
+    {
+      "title": "Communication from the Commission on placeholder guidelines for artificial intelligence [fixture title]",
+      "celexNumber": "52099DC0001",
+      "celex": "52099DC0001",
+      "documentType": "Communication",
+      "documentTypeCode": "communication",
+      "dateOfDocument": "13/11/2026",
+      "dateOfDocumentISO": "2026-11-13",
+      "author": "European Commission",
+      "availableLanguages": ["EN"],
+      "url": "https://eur-lex.europa.eu/legal-content/EN/ALL/?uri=CELEX:52099DC0001"
+    },
+    {
+      "title": "A listing without a parseable CELEX [fixture title]",
+      "celexNumber": "",
+      "celex": null,
+      "documentType": null,
+      "url": "https://eur-lex.europa.eu/"
+    }
+  ],
+  "fetchedAt": "2026-11-18T07:00:00.000Z",
+  "subscription": { "tier": "FREE", "maxPages": 1 },
+  "credits": { "operation_weight": 3, "current": 8, "limit": 500, "remaining": 492, "included": 500, "topup": 0, "resetsAt": "2026-12-01T00:00:00.000Z" }
+}

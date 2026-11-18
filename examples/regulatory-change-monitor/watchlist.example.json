@@ -1,0 +1,11 @@
+{
+  "acts": [
+    { "celex": "32016R0679", "label": "GDPR" },
+    { "celex": "32024R1689", "label": "AI Act" }
+  ],
+  "topics": [
+    { "name": "New regulations", "documentType": "regulation" },
+    { "name": "Artificial intelligence", "query": "\"artificial intelligence\"" }
+  ],
+  "days": 7
+}

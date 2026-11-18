@@ -1,0 +1,35 @@
+{
+  "name": "european-legal-agent-examples",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Runnable example agents that ground their answers in citable EU law using LexAPI.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "ai-act": "tsx examples/ai-act-obligations-finder/src/main.ts",
+    "monitor": "tsx examples/regulatory-change-monitor/src/main.ts",
+    "monitor:webhook-setup": "tsx examples/regulatory-change-monitor/src/webhook-setup.ts",
+    "monitor:webhook-server": "tsx examples/regulatory-change-monitor/src/webhook-server.ts",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test \"examples/**/*.test.ts\" \"shared/**/*.test.ts\" \"testing/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "1.10.0",
+    "@lexapi/client": "0.4.0",
+    "@lexapi/mcp": "0.5.1",
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "openai": "7.59.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "22.20.5",
+    "eslint": "10.15.0",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.73.0"
+  }
+}

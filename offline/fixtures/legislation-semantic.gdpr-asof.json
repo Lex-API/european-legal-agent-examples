@@ -1,0 +1,40 @@
+{
+  "success": true,
+  "searchType": "semantic-legislation",
+  "query": "fixture",
+  "resultCount": 2,
+  "results": [
+    {
+      "id": "asof:32016R0679:art_46",
+      "law_id": "32016R0679",
+      "law_title": "Regulation (EU) 2016/679 (General Data Protection Regulation) [fixture title]",
+      "article_ref": "art_46",
+      "language": "en",
+      "score": 0.803,
+      "chapter": null,
+      "asOf": "2019-06-01",
+      "asOfResolved": true,
+      "asOfVersion": { "celex": "32016R0679", "date": null, "kind": "as_published" },
+      "matchedVersion": { "id": "fx-gdpr-0001", "law_id": "02016R0679-20990101", "consolidatedAsOf": "2099-01-01" },
+      "text": "[SYNTHETIC FIXTURE - not the text of the act] Placeholder paragraph 1 (as published): in the absence of a placeholder decision, a controller may transfer personal data to a third country only if the controller has provided appropriate placeholder safeguards."
+    },
+    {
+      "id": "fx-gdpr-0002",
+      "law_id": "32016R0679",
+      "law_title": "Regulation (EU) 2016/679 (General Data Protection Regulation) [fixture title]",
+      "article_ref": "art_45",
+      "language": "en",
+      "score": 0.781,
+      "asOf": "2019-06-01",
+      "asOfResolved": false,
+      "asOfReason": "fetch_timeout",
+      "text": "[SYNTHETIC FIXTURE - not the text of the act] Placeholder paragraph 1: a transfer of personal data to a third country may take place where the placeholder authority has decided that the third country ensures an adequate level of protection. Such a transfer shall not require any specific authorisation."
+    }
+  ],
+  "asOf": "2019-06-01",
+  "asOfSummary": { "liveFetches": 1, "unresolved": 1 },
+  "metadata": {},
+  "tookMs": 2400,
+  "subscription": { "tier": "FREE", "maxResults": 10 },
+  "credits": { "operation_weight": 5, "current": 5, "limit": 500, "remaining": 495, "included": 500, "topup": 0, "resetsAt": "2026-12-01T00:00:00.000Z" }
+}

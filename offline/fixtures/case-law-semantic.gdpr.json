@@ -1,0 +1,41 @@
+{
+  "success": true,
+  "searchType": "semantic-case-law",
+  "query": "fixture",
+  "resultCount": 2,
+  "results": [
+    {
+      "case_id": "ECLI_EU_C_2020_559_en_fixture",
+      "score": 0.792,
+      "jurisdiction": "EU",
+      "language": "en",
+      "case_name": "Fixture case name A",
+      "court": "Court of Justice",
+      "decision_date": "2020-07-16",
+      "case_number": "C-311/18",
+      "ecli": "ECLI:EU:C:2020:559",
+      "parties": ["Fixture Party v Fixture Party"],
+      "summary": "[SYNTHETIC FIXTURE - machine-written digest placeholder] The Court examined placeholder questions about transfers.",
+      "snippet": "[SYNTHETIC FIXTURE - machine-written digest placeholder] The Court examined placeholder questions about transfers.",
+      "metadata": { "celex_id": "62018CJ0311", "document_type": "judgment", "paragraph_number": 3 }
+    },
+    {
+      "case_id": "ECLI_EU_T_2099_1_en_fixture",
+      "score": 0.731,
+      "jurisdiction": "EU",
+      "language": "en",
+      "case_name": "Fixture case name B",
+      "court": "General Court",
+      "decision_date": "2099-01-01",
+      "case_number": "T-1/99",
+      "ecli": "ECLI:EU:T:2099:1",
+      "summary": "[SYNTHETIC FIXTURE - machine-written digest placeholder] An order with no English text.",
+      "snippet": "[SYNTHETIC FIXTURE - machine-written digest placeholder] An order with no English text.",
+      "metadata": { "celex_id": "62099TJ0001", "document_type": "order" }
+    }
+  ],
+  "metadata": {},
+  "tookMs": 903,
+  "subscription": { "tier": "FREE", "maxResults": 10 },
+  "credits": { "operation_weight": 5, "current": 10, "limit": 500, "remaining": 490, "included": 500, "topup": 0, "resetsAt": "2026-12-01T00:00:00.000Z" }
+}

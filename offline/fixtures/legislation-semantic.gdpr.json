@@ -1,0 +1,47 @@
+{
+  "success": true,
+  "searchType": "semantic-legislation",
+  "query": "fixture",
+  "resultCount": 3,
+  "results": [
+    {
+      "id": "fx-gdpr-0001",
+      "law_id": "02016R0679-20990101",
+      "law_title": "Regulation (EU) 2016/679 (General Data Protection Regulation), consolidated [fixture title]",
+      "article_ref": "art_46",
+      "language": "en",
+      "score": 0.803,
+      "exact_match_law_id": false,
+      "consolidated": true,
+      "consolidatedAsOf": "2099-01-01",
+      "baseCelex": "32016R0679",
+      "consolidatedNote": "The act as amended, consolidated as of 2099-01-01; not the authentic text. Only the Official Journal text is authentic.",
+      "baseAct": { "law_id": "32016R0679", "article_ref": "art_46", "score": 0.797 },
+      "text": "[SYNTHETIC FIXTURE - not the text of the act] Placeholder paragraph 1: in the absence of a placeholder decision, a controller may transfer personal data to a third country only if the controller has provided appropriate placeholder safeguards, and on condition that enforceable rights and effective legal remedies are available."
+    },
+    {
+      "id": "fx-gdpr-0002",
+      "law_id": "32016R0679",
+      "law_title": "Regulation (EU) 2016/679 (General Data Protection Regulation) [fixture title]",
+      "article_ref": "art_45",
+      "language": "en",
+      "score": 0.781,
+      "exact_match_law_id": false,
+      "text": "[SYNTHETIC FIXTURE - not the text of the act] Placeholder paragraph 1: a transfer of personal data to a third country may take place where the placeholder authority has decided that the third country ensures an adequate level of protection. Such a transfer shall not require any specific authorisation."
+    },
+    {
+      "id": "fx-other-0003",
+      "law_id": "32018R1725",
+      "law_title": "Regulation (EU) 2018/1725 [fixture title]",
+      "article_ref": "art_48",
+      "language": "en",
+      "score": 0.722,
+      "exact_match_law_id": false,
+      "text": "[SYNTHETIC FIXTURE - not the text of the act] Placeholder paragraph about transfers by Union institutions."
+    }
+  ],
+  "metadata": {},
+  "tookMs": 388,
+  "subscription": { "tier": "FREE", "maxResults": 10 },
+  "credits": { "operation_weight": 5, "current": 5, "limit": 500, "remaining": 495, "included": 500, "topup": 0, "resetsAt": "2026-12-01T00:00:00.000Z" }
+}

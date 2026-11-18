@@ -1,0 +1,15 @@
+{
+  "submit_answer": {
+    "status": "answered",
+    "quotes": [
+      { "source": "S1", "text": "a controller may transfer personal data to a third country only if the controller has provided appropriate placeholder safeguards" },
+      { "source": "S2", "text": "Such a transfer shall not require any specific authorisation." },
+      { "source": "S4", "text": "afforded a level of protection essentially equivalent to the placeholder standard" }
+    ],
+    "statements": [
+      { "text": "The retrieved articles describe two routes for a transfer: a decision that the third country is adequate, or appropriate safeguards provided by the controller.", "sources": ["S1", "S2"] },
+      { "text": "The retrieved judgment paragraphs address the level of protection the safeguards have to ensure and what the assessment takes into account.", "sources": ["S4", "S5"] },
+      { "text": "Most companies rely on standard contractual clauses.", "sources": [] }
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "success": true,
+  "searchType": "semantic-case-law",
+  "query": "fixture",
+  "resultCount": 0,
+  "results": [],
+  "metadata": {},
+  "tookMs": 310,
+  "subscription": { "tier": "FREE", "maxResults": 10 },
+  "credits": { "operation_weight": 5, "current": 10, "limit": 500, "remaining": 490, "included": 500, "topup": 0, "resetsAt": "2026-12-01T00:00:00.000Z" }
+}
