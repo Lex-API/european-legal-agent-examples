@@ -68,7 +68,7 @@ message = (PROMPT | model).invoke({"date": as_of or "none", "passages": passages
 ## Install
 
 `langchain-lexapi` version 0.1.0 is not on PyPI yet. `pyproject.toml` installs it from its
-repository, pinned to a commit:
+repository, pinned to a commit, so installing this example needs that repository to be reachable:
 
 ```
 langchain-lexapi @ git+https://github.com/Lex-API/lexapi-langchain@724a62debef42761362b5cea7bda6237ed5cd87a
@@ -126,6 +126,8 @@ reported"), no model call when nothing has text, unusable replies, 402 and 403 e
 messages, the API key never printed, the model settings, the retriever closed after the run, and the
 dry run.
 Not covered by any test: the live API and a real model.
+Until the adapter's repository is public, these tests run locally only (`pip install -e .` needs
+access to it); the CI job checks whether it is reachable and skips with a notice when it is not.
 
 ```bash
 pip install -e ".[dev]" && ruff check . && ruff format --check . && mypy && pytest -q
