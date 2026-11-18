@@ -29,13 +29,16 @@ short model-written summary kept apart from the quotes.
    The check (`grounding.py`) **rejects** the draft if:
    - it cites a source id that was not retrieved in this run;
    - a quote is shorter than three words, or is not a verbatim excerpt of the source it names;
-   - a quotation inside a sentence (two words or more, or eight characters or more) is verbatim
-     neither in a source that sentence cites nor in your question, or a quotation mark is left open;
+   - a quotation inside a sentence - any quotation that contains a letter - is not verbatim in a
+     source that sentence cites, or a quotation mark is left open. Words from your question are not a
+     source: the prompt tells the model to paraphrase them without quotation marks;
    - a quote or sentence contains a line break or a control or format character (terminal escapes,
      zero-width and bidi characters), or starts with a heading, blockquote, table or code-fence
      marker;
-   - a sentence contains an HTML character reference (`&quot;`), a citation marker of its own
-     (`[S1]`), or a URL that is not the URL of a source it cites;
+   - a sentence contains an HTML character reference (`&quot;`), a URL that is not the URL of a
+     source it cites, or a citation marker of its own: a bracketed token (`[ ]`, `［ ］`, `⟦ ⟧`,
+     `【 】`, `〔 〕`) whose content, after NFKC normalisation and with spaces removed, is
+     `S<digits>` (or a list such as `S1,S2`) or starts with `Source`;
    - there are more than 12 quotes or 12 sentences, a quote is longer than 1,200 characters, or a
      sentence is longer than 600.
 
@@ -46,23 +49,32 @@ short model-written summary kept apart from the quotes.
    acute accent, a doubled `''`, and `,,` used as an opening mark. Punctuation and ellipses at the
    two ends of a quotation are ignored, and the case of its first letter may differ. An apostrophe
    inside a word (`provider's`, `don't`, `subjects'`) is not a quotation mark. A quote is printed
-   with the source's own characters. Other quotation conventions are not recognised.
+   with the source's own characters, without the model's end punctuation. Other quotation
+   conventions are not recognised. An empty sentence is dropped.
 
    It **removes**, and only counts:
    - sentences that cite no source;
    - sentences that match the conclusion filter (`conclusions.py`): wording addressed to you
-     ("you must", "you need to", "your processing is", "is compliant", "applies to you"). A match
-     is ignored when an earlier word of the same sentence is `whether`, `if`, `how`, `which`,
-     `may`, `might` or `could`. This is a blunt lexical filter for English output: it does not
-     catch every phrasing, and it does not cover other languages. Sentences that describe what
-     the law requires of controllers in general are not filtered; keeping those apart from advice
-     relies on the prompt.
+     ("you must", "you will need to", "your processing is lawful", "is compliant", "applies to
+     you", "we recommend", "in your position").
+     A match is ignored only when it sits in a clause that frames a question: the nearest
+     earlier `whether`, `if`, `when`, `how` or `which` of the same sentence is not followed by
+     `means`, `is why`, `makes` or `shows`; between that word and the match there is no clause
+     break (`, ; : ( )` or a dash) and no `you`, `your` or `yours`; and, for `if` and `when`, a
+     clause break follows the match ("If the tool is high-risk, Article 9 describes ..."). A
+     quotation already verified as verbatim from a cited source is masked before the filter runs.
+     This is a blunt lexical filter for English output: it does not catch every phrasing, it
+     removes some legitimate sentences, and it does not cover other languages.
+     Sentences that describe what the law requires of controllers in general are not filtered;
+     keeping those apart from advice relies on the prompt.
 
    A rejected draft is retried once; after a second failure only the retrieved sources are printed.
 5. **Render** - "Quoted from the sources" and "Summary (written by the model)" are separate
-   sections. The model's sentences and your question are printed through one function
-   (`plain_text` in `text.py`) that escapes Markdown; removed sentences are counted, not printed;
-   a sentence that quotes your question is marked as doing so. Every source line carries CELEX,
+   sections. Everything printed that this program did not write itself goes through one function
+   (`plain_text` in `text.py`): the model's sentences, your question, and every string from the
+   API (titles, article ids, CELEX, ECLI, notes, hints). It removes control and format
+   characters, collapses whitespace and escapes Markdown. A link is printed only if it parses as
+   an http(s) URL. Removed sentences are counted, not printed. Every source line carries CELEX,
    article id or paragraph, ECLI and link.
 
 If nothing is retrieved, or the model reports that the sources do not answer the question, the
@@ -158,16 +170,16 @@ Model: scripted (no model was called).
 
 ## Sources
 
-- [S1] Regulation (EU) 2016/679 (General Data Protection Regulation), consolidated [fixture title] - Article 46 (article id art_46) - CELEX 02016R0679-20990101 - https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02016R0679-20990101
+- [S1] Regulation (EU) 2016/679 (General Data Protection Regulation), consolidated (fixture title) - Article 46 (article id art\_46) - CELEX 02016R0679-20990101 - https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02016R0679-20990101
   - Note: The act as amended, consolidated as of 2099-01-01; not the authentic text. Only the Official Journal text is authentic. Authentic act: CELEX 32016R0679 as published in the Official Journal (https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32016R0679).
-- [S2] Regulation (EU) 2016/679 (General Data Protection Regulation) [fixture title] - Article 45 (article id art_45) - CELEX 32016R0679 - https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32016R0679
-- [S4] Judgment of the Court of 1 January 2099 [fixture title] - paragraph 3 - ECLI:EU:C:2099:901 - CELEX 62099CJ9901 - https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:62099CJ9901
-- [S5] Judgment of the Court of 1 January 2099 [fixture title] - paragraph 4 - ECLI:EU:C:2099:901 - CELEX 62099CJ9901 - https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:62099CJ9901
+- [S2] Regulation (EU) 2016/679 (General Data Protection Regulation) (fixture title) - Article 45 (article id art\_45) - CELEX 32016R0679 - https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32016R0679
+- [S4] Judgment of the Court of 1 January 2099 (fixture title) - paragraph 3 - ECLI:EU:C:2099:901 - CELEX 62099CJ9901 - https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:62099CJ9901
+- [S5] Judgment of the Court of 1 January 2099 (fixture title) - paragraph 4 - ECLI:EU:C:2099:901 - CELEX 62099CJ9901 - https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:62099CJ9901
 
 ## Notices
 
 - 1 legislation hit(s) from acts other than the GDPR were not used.
-- ECLI:EU:T:2099:902: found by the search, but its text is not available (not_in_language).
+- ECLI:EU:T:2099:902: found by the search, but its text is not available (not\_in\_language).
 
 _Research support, not legal advice. The summary is model-written and may misread the sources; check it against the quoted text and the linked documents._
 ```

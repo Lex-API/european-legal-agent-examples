@@ -62,19 +62,21 @@ on FREE, and webhooks need a paid plan (the change monitor's polling mode does n
 - **Code checks the draft** ([`shared/grounding.ts`](shared/grounding.ts) and its Python twin;
   both run the cases in [`shared/grounding-vectors.json`](shared/grounding-vectors.json)). A draft
   is rejected if it cites an id that was not retrieved; if a quote is shorter than three words or
-  is not a verbatim excerpt, on word boundaries, of its source; if a quotation inside a statement
-  is verbatim neither in a source that statement cites nor in the user's own input, or a
-  quotation mark is left open; if a quote or statement contains a line break, a control or
-  format character or a leading block marker; if a statement contains an HTML character
-  reference, a citation marker or a foreign URL; or if it exceeds the size caps (12 quotes, 12
-  statements, 1,200 and 600 characters). Statements with no source, and statements that match an
-  example's conclusion filter, are removed and counted. The example READMEs give the rules in
-  full, including which quotation-mark styles are recognised.
+  is not a verbatim excerpt, on word boundaries, of its source; if any quotation inside a
+  statement is not verbatim in a source that statement cites (the user's own input is not a
+  source), or a quotation mark is left open; if a quote or statement contains a line break, a
+  control or format character or a leading block marker; if a statement contains an HTML
+  character reference, a bracketed citation marker or a foreign URL; or if it exceeds the size
+  caps (12 quotes, 12 statements, 1,200 and 600 characters). Statements with no source, and
+  statements that match the conclusion filter, are removed and counted. The example READMEs give
+  the rules in full, including which quotation-mark styles are recognised.
 - **Output keeps law and model text apart.** Quoted source text and model-written text are in
-  separate, labelled sections. A quote is printed with the source's own characters. Model-written
-  text that is printed (statements, search queries) goes through one escaping function, so it
-  cannot imitate the quoted section; removed statements are never printed. Every source line has
-  the CELEX number, article id or paragraph, ECLI for case law, and a EUR-Lex link.
+  separate, labelled sections. A quote is printed with the source's own characters. Everything
+  printed that the program did not write itself - model text, user input, and strings from the
+  API or the configuration - goes through one function that removes control characters and
+  escapes Markdown, so none of it can imitate a heading or the quoted section; removed
+  statements are never printed. Every source line has the CELEX number, article id or paragraph,
+  ECLI for case law, and a EUR-Lex link.
 - **Versions are labelled.** A consolidated text is marked as having no legal force, with the
   authentic act named. "The text in force on a date" is stated only when the API reports
   `asOfResolved: true`.

@@ -22,8 +22,8 @@ from gdpr_assistant.grounding import (
     GroundedAnswer,
     GroundingError,
     Source,
-    citation,
     render_answer,
+    source_list_item,
     sources_for_prompt,
     validate_draft,
 )
@@ -60,7 +60,8 @@ class Result:
 
 
 def _notices(notices: list[str]) -> str:
-    return "## Notices\n\n" + "\n".join(f"- {n}" for n in notices) + "\n\n" if notices else ""
+    # Notices carry strings from the API (hints, case identifiers, reasons): printed through plain_text.
+    return "## Notices\n\n" + "\n".join(f"- {plain_text(n)}" for n in notices) + "\n\n" if notices else ""
 
 
 def answer_question(question: str, *, client: LexAPI, llm: Llm, as_of: str | None = None) -> Result:
@@ -68,7 +69,8 @@ def answer_question(question: str, *, client: LexAPI, llm: Llm, as_of: str | Non
     found = retrieve(client, question, as_of)
     sources = found.sources
     scope = f" (as of {plain_text(as_of)})" if as_of else ""
-    header = f"# GDPR research assistant\n\n**Question{scope}:** {plain_text(question)}\n\nModel: {llm.label}.\n\n"
+    asked = f"**Question{scope}:** {plain_text(question)}"
+    header = f"# GDPR research assistant\n\n{asked}\n\nModel: {plain_text(llm.label)}.\n\n"
 
     if not sources:
         # The "no supporting text found" path: say so; do not ask the model to fill the gap.
@@ -83,7 +85,8 @@ def answer_question(question: str, *, client: LexAPI, llm: Llm, as_of: str | Non
         f"Question: {question}\n\nSources:\n\n{sources_for_prompt(sources)}\n\n"
         "Answer from these sources only. Copy quotes exactly, whole words, one line each. Write each sentence as "
         "one line of plain text (no Markdown, no URLs) and give it its source ids. Put quotation marks only around "
-        "words copied exactly from a source or from the question."
+        "words copied exactly from a source you cite for that sentence; refer to the question in your own words, "
+        "without quotation marks."
     )
     answer: GroundedAnswer | None = None
     feedback = ""
@@ -98,7 +101,7 @@ def answer_question(question: str, *, client: LexAPI, llm: Llm, as_of: str | Non
             )
         )
         try:
-            answer = validate_draft(raw, sources, user_text=question, conclusion_patterns=READER_PATTERNS)
+            answer = validate_draft(raw, sources, conclusion_patterns=READER_PATTERNS)
             break
         except GroundingError as error:
             rejected = "\n- ".join(error.violations)
@@ -106,7 +109,7 @@ def answer_question(question: str, *, client: LexAPI, llm: Llm, as_of: str | Non
 
     # 4. Render --------------------------------------------------------------
     if answer is None:
-        listing = "\n".join(f"- [{s.id}] {citation(s)}" + "".join(f"\n  - Note: {n}" for n in s.notes) for s in sources)
+        listing = "\n".join(source_list_item(s) for s in sources)
         body = (
             "## Retrieved sources (no model text)\n\nThe model's draft failed the grounding check twice, so none "
             f"of it is shown. These are the sources the searches returned:\n\n{listing}\n\n"

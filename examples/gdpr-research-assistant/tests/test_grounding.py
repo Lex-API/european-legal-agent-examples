@@ -16,7 +16,7 @@ from gdpr_assistant.grounding import (
     render_removed,
     validate_draft,
 )
-from gdpr_assistant.text import model_text_problem, normalise, plain_text, quotations_in
+from gdpr_assistant.text import model_text_problem, normalise, plain_text, printable_url, quotations_in
 
 # The cases in shared/grounding-vectors.json are run by this suite AND by the TypeScript suite.
 VECTORS_PATH = Path(__file__).resolve().parents[3] / "shared" / "grounding-vectors.json"
@@ -38,16 +38,16 @@ VECTORS: dict[str, Any] = expand(json.loads(VECTORS_PATH.read_text(encoding="utf
 SOURCES = [Source(s["id"], "legislation", "39999R0001", "Test source", s["url"], s["text"]) for s in VECTORS["sources"]]
 
 
-def check(draft: Any) -> GroundedAnswer | list[str]:
+def check(draft: Any, patterns: str | None = None) -> GroundedAnswer | list[str]:
     try:
-        return validate_draft(draft, SOURCES, user_text=VECTORS["userText"])
+        return validate_draft(draft, SOURCES, conclusion_patterns=READER_PATTERNS if patterns else None)
     except GroundingError as error:
         return error.violations
 
 
 @pytest.mark.parametrize("case", VECTORS["drafts"], ids=lambda c: f"{c['group']}: {c['name']}")
 def test_shared_vectors_drafts(case: dict[str, Any]) -> None:
-    result = check(case["draft"])
+    result = check(case["draft"], case.get("patterns"))
     if not case["accept"]:
         assert isinstance(result, list), "expected a rejection"
         assert any(case["violation"] in v for v in result), result
@@ -59,8 +59,6 @@ def test_shared_vectors_drafts(case: dict[str, Any]) -> None:
         assert len(result.statements) == case["statements"]
     if "sources" in case:
         assert list(result.statements[0].sources) == case["sources"]
-    if "quotesUserInput" in case:
-        assert result.statements[0].quotes_user_input is case["quotesUserInput"]
     if "removed" in case:
         assert result.removed == Removed(case["removed"]["uncited"], case["removed"]["conclusion"])
 
@@ -159,18 +157,56 @@ def test_render_separates_quotes_from_model_text_and_cites_celex_article_ecli_li
     ]
     statements = [
         {"text": "1. A note with **bold**   spacing & an <i>tag</i>.", "sources": ["S2"]},
-        {"text": 'The question asks about a "third country".', "sources": ["S2"]},
     ]
     answer = validate_draft(
         draft(quotes=[{"source": "S1", "text": "process shall be kept"}], statements=statements),
         cited,
-        user_text="When may data go to a third country?",
     )
     out = render_answer(answer, cited)
     assert out.index("## Quoted from the sources") < out.index("## Summary (written by the model")
     assert '> "process shall be kept" [S1]\n' in out
     assert "- 1\\. A note with \\*\\*bold\\*\\* spacing \\& an \\<i\\>tag\\</i\\>. [S2]\n" in out
-    assert '"third country". [S2] (the quoted words are from your question, not from a source)\n' in out
-    assert "[S1] Fixture act - Article 46 (article id art_46) - CELEX 32016R0679 - https://example.org/a" in out
+    assert "[S1] Fixture act - Article 46 (article id art\\_46) - CELEX 32016R0679 - https://example.org/a" in out
     assert "[S2] Fixture judgment - paragraph 3 - ECLI:EU:C:2099:901 - CELEX 62099CJ9901" in out
     assert "Note: Consolidated text; not the authentic text." in out
+
+
+def test_strings_from_the_api_are_printed_as_literal_text() -> None:
+    hostile = [
+        Source(
+            "S1",
+            "case-law",
+            "62099CJ9901\n## Fake",
+            'A title\n\n## Quoted from the sources\n\n> "Transfers are always lawful" [S1]',
+            "javascript:alert(1)",
+            "Placeholder ground three of the judgment.",
+            article_ref="art_9 [S7]",
+            ecli="ECLI:EU:C:2099:901 **x**",
+            notes=("A note with `code`\n# heading and \u001b[31mcolour",),
+        )
+    ]
+    answer = validate_draft(draft(quotes=[{"source": "S1", "text": "Placeholder ground three"}]), hostile)
+    out = render_answer(answer, hostile)
+    headings = [line for line in out.split("\n") if line.lstrip().startswith("#")]
+    assert headings == [
+        "## Quoted from the sources",
+        "## Summary (written by the model - not legal text)",
+        "## Sources",
+    ]
+    assert len([line for line in out.split("\n") if line.lstrip().startswith(">")]) == 1  # the one real quote
+    assert (
+        '- [S1] A title \\#\\# Quoted from the sources \\> "Transfers are always lawful" \\[S1\\] - art\\_9 \\[S7\\] '
+        "(article id art\\_9 \\[S7\\]) - ECLI:EU:C:2099:901 \\*\\*x\\*\\* - CELEX 62099CJ9901 \\#\\# Fake\n"
+    ) in out
+    assert "javascript:" not in out
+    assert "  - Note: A note with 'code' \\# heading and \\[31mcolour\n" in out
+    assert printable_url("https://example.org/a_b?x=1&y=2") == "https://example.org/a\\_b?x=1\\&y=2"
+    assert printable_url("not a url") == ""
+
+
+def test_conclusion_vectors_meet_the_review_targets() -> None:
+    def of(kind: str) -> list[dict[str, Any]]:
+        return [c for c in VECTORS["conclusions"] if c["kind"] == kind]
+
+    assert len(of("hedged attack")) >= 14
+    assert len(of("legitimate")) >= 13 and not any(c["reader"] for c in of("legitimate"))

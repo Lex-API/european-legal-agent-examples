@@ -7,7 +7,7 @@
     {
       "id": "fx-gdpr-0001",
       "law_id": "02016R0679-20990101",
-      "law_title": "Regulation (EU) 2016/679 (General Data Protection Regulation), consolidated [fixture title]",
+      "law_title": "Regulation (EU) 2016/679 (General Data Protection Regulation), consolidated (fixture title)",
       "article_ref": "art_46",
       "language": "en",
       "score": 0.803,
@@ -26,7 +26,7 @@
     {
       "id": "fx-gdpr-0002",
       "law_id": "32016R0679",
-      "law_title": "Regulation (EU) 2016/679 (General Data Protection Regulation) [fixture title]",
+      "law_title": "Regulation (EU) 2016/679 (General Data Protection Regulation) (fixture title)",
       "article_ref": "art_45",
       "language": "en",
       "score": 0.781,
@@ -36,7 +36,7 @@
     {
       "id": "fx-other-0003",
       "law_id": "32018R1725",
-      "law_title": "Regulation (EU) 2018/1725 [fixture title]",
+      "law_title": "Regulation (EU) 2018/1725 (fixture title)",
       "article_ref": "art_48",
       "language": "en",
       "score": 0.722,

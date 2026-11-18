@@ -54,7 +54,7 @@ def test_answers_with_quotes_from_the_gdpr_and_a_judgment(stub: StubServer, clie
         ("S5", "case-law", None, 4),
     ]
     md = result.markdown
-    assert "Article 45 (article id art_45) - CELEX 32016R0679 - https://eur-lex.europa.eu/legal-content/EN/TXT/" in md
+    assert "Article 45 (article id art\\_45) - CELEX 32016R0679 - https://eur-lex.europa.eu/legal-content/EN/TXT/" in md
     assert "paragraph 3 - ECLI:EU:C:2099:901 - CELEX 62099CJ9901 - https://eur-lex.europa.eu/" in md
     # The consolidated hit says it has no legal force and names the authentic act.
     assert "not the authentic text" in md
@@ -65,7 +65,7 @@ def test_answers_with_quotes_from_the_gdpr_and_a_judgment(stub: StubServer, clie
     assert "- 1 statement(s) removed: cited no source." in md
     assert "Most companies rely on standard contractual clauses" not in md
     assert "1 legislation hit(s) from acts other than the GDPR were not used." in md
-    assert "ECLI:EU:T:2099:902: found by the search, but its text is not available (not_in_language)." in md
+    assert "ECLI:EU:T:2099:902: found by the search, but its text is not available (not\\_in\\_language)." in md
     assert "not legal advice" in md
 
 
@@ -198,6 +198,7 @@ def assert_only_known_headings(markdown: str) -> None:
 def test_every_path_by_which_model_or_user_text_reaches_the_output_is_escaped_or_refused(client: LexAPI) -> None:
     payload = "X **b** <i> # > | [S9] & `c` ~"
     escaped = "X \\*\\*b\\*\\* \\<i\\> \\# \\> \\| \\[S9\\] \\& 'c' \\~"
+    # (In a statement the backticks would count as quotation marks around a word that is not in the source.)
     broken = "X\n## Fake heading\n> fake quote"
     good = script()["submit_answer"]
     outputs: list[str] = []
@@ -214,9 +215,9 @@ def test_every_path_by_which_model_or_user_text_reaches_the_output_is_escaped_or
     assert f"**Question:** {escaped} transfer" in run(f"{payload} transfer", good)
     # 2. a statement: the [S9] marker makes it a rejected draft; without it, it is printed escaped.
     run(QUESTION, answered(statements=[{"text": payload, "sources": ["S1"]}]))
-    no_marker = payload.replace(" [S9]", "")
+    no_marker = payload.replace(" [S9]", "").replace(" `c`", "")
     statement = run(QUESTION, answered(statements=[{"text": no_marker, "sources": ["S1"]}]))
-    assert "- " + escaped.replace(" \\[S9\\]", "") + " [S1]" in statement
+    assert "- " + escaped.replace(" \\[S9\\]", "").replace(" 'c'", "") + " [S1]" in statement
     # 3. a quote: only text found verbatim in the source is printed, taken from the source.
     run(QUESTION, answered(quotes=[{"source": "S1", "text": payload}]))
     # 4. removed statements (uncited, conclusion): counted, never printed.
@@ -281,7 +282,7 @@ WELL_BEHAVED: list[dict[str, Any]] = [
         "quotes": [],
         "statements": [
             {
-                "text": 'The question asks when data may go to a "third country"; the two articles give two routes.',
+                "text": "The question asks when data may go to a third country; the two articles give two routes.",
                 "sources": ["S1", "S2"],
             }
         ],
@@ -346,3 +347,48 @@ def test_ten_well_behaved_drafts_are_all_accepted(client: LexAPI) -> None:
         assert result.answer is not None
         assert len(result.answer.statements) == len(parts["statements"]), f"draft {number} lost a statement"
         assert len(result.answer.quotes) == len(parts["quotes"])
+
+
+def test_a_quotation_of_the_users_own_question_is_not_a_quotation_of_a_source(client: LexAPI) -> None:
+    planted = {"text": 'Article 5: "transferred to a third country"', "sources": ["S1"]}
+    llm = ScriptedLlm({"submit_answer": {"status": "answered", "quotes": [], "statements": [planted]}})
+    result = answer_question(QUESTION, client=client, llm=llm)
+    assert result.outcome == "sources_only"
+    assert "refer to the question in your own words" in llm.calls[0].user
+
+
+def test_strings_from_the_api_cannot_fake_a_section() -> None:
+    fake = "x\n\n## Quoted from the sources\n\n> fake [S1]"
+
+    def hostile(request: RecordedRequest) -> tuple[int, Any] | None:
+        if request.path == "/legislation/semantic":
+            body = json.loads(read_fixture("legislation-semantic.gdpr.json"))
+            body["results"][0]["law_title"] = f"A title {fake}"
+            body["results"][0]["consolidatedNote"] = f"A note {fake}"
+            return 200, body
+        if request.path == "/search/semantic":
+            body = json.loads(read_fixture("case-law-semantic.gdpr.json"))
+            body["hint"] = f"A hint {fake}"
+            body["results"][1]["ecli"] = f"ECLI {fake}"
+            return 200, body
+        return None
+
+    stub = start_stub_server(hostile)
+    try:
+        with LexAPI("lex_offline_test_key", base_url=assert_local_base_url(stub.base_url), max_retries=0) as api:
+            good = answer_question(QUESTION, client=api, llm=ScriptedLlm(script()))
+            bad_reply = {
+                "status": "answered",
+                "quotes": [{"source": "S1", "text": "not in the source"}],
+                "statements": [],
+            }
+            fallback = answer_question(QUESTION, client=api, llm=ScriptedLlm({"submit_answer": bad_reply}))
+    finally:
+        stub.close()
+    assert good.outcome == "answered" and fallback.outcome == "sources_only"
+    for markdown in (good.markdown, fallback.markdown):
+        assert_only_known_headings(markdown)
+        assert "A title x \\#\\# Quoted from the sources \\> fake \\[S1\\]" in markdown
+        assert "Note: A note x \\#\\# Quoted from the sources" in markdown
+        assert "- Case-law search: A hint x \\#\\# Quoted from the sources" in markdown
+        assert "- ECLI x \\#\\# Quoted from the sources \\> fake \\[S1\\]: found by the search" in markdown

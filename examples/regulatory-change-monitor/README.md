@@ -49,20 +49,27 @@ source ids, nothing else. The same check as in the other examples (`shared/groun
 It **rejects** the summary if:
 
 - a statement cites a document that is not in the list;
-- a quotation inside a statement (two words or more, or eight characters or more) is not
-  verbatim, on word boundaries, in a record that statement cites, or a quotation mark is left open;
+- a quotation inside a statement - any quotation that contains a letter - is not verbatim, on
+  word boundaries, in a record that statement cites, or a quotation mark is left open;
 - a statement contains a line break or a control or format character, or starts with a heading,
   blockquote, table or code-fence marker;
-- a statement contains an HTML character reference, a citation marker of its own (`[S1]`), or a
-  URL that is not the URL of a record it cites;
+- a statement contains an HTML character reference, a bracketed citation marker of its own
+  (`[S1]` and its look-alikes), or a URL that is not the URL of a record it cites;
 - there are more than 12 statements, or one is longer than 600 characters.
 
-Statements without a source are removed and counted, not printed. The quotation-mark styles
-recognised are listed in the [AI Act example's README](../ai-act-provision-finder/README.md).
+It **removes**, and only counts, statements without a source and statements that match the
+reader patterns of the conclusion filter (`shared/conclusions.ts`): wording addressed to you
+("you must review", "we recommend", "you will need to", "in your position"). A digest reports; it
+does not advise. The filter is blunt and English-only; the
+[AI Act example's README](../ai-act-provision-finder/README.md) gives its rules and the
+quotation-mark styles recognised.
 
-A rejected summary is retried once; after that the list is shown without a summary. The summary
-is printed through the same escaping function as all other model text. When nothing is new, the
-digest says so and the model is not called.
+A rejected summary is retried once; after that the list is shown without a summary. Everything
+printed that this program did not write itself - the summary, and every string from the API, the
+watch list and webhook payloads (titles, CELEX numbers, labels, topic names, delivery ids,
+notices) - goes through one function that removes control characters and escapes Markdown. A
+link is printed only if it parses as an http(s) URL. When nothing is new, the digest says so and
+the model is not called.
 
 The check cannot tell whether a sentence describes its cited records correctly.
 
@@ -108,7 +115,8 @@ separately by your model provider.
 
 `npm test` runs `test/monitor.test.ts` offline: baseline on first poll, only-new on later polls,
 stale-relation notices, the cited digest, the nothing-new path, rejection of an ungrounded summary
-and of a summary shaped like Markdown, ten well-behaved summaries, "not reported" credits, signature verification (valid,
+and of a summary shaped like Markdown, removal of advice, hostile strings in records and
+payloads, ten well-behaved summaries, "not reported" credits, signature verification (valid,
 tampered, wrong secret, missing, re-serialised body, stale timestamp, empty secret), duplicate
 deliveries and the bound on remembered ids, the HTTP receiver on 127.0.0.1 (200, 401, 405, 413),
 and webhook setup against the stub. Not covered by any test: the live API, real deliveries and a real model.
@@ -128,15 +136,15 @@ Generated 2026-11-18T08:00:00.000Z from polling. Model: scripted (no model was c
 
 ## Documents (records returned by LexAPI)
 
-- [S1] Corrigendum to Regulation (EU) 2016/679 [fixture title] - CELEX 32099R0003 - https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32099R0003
+- [S1] Corrigendum to Regulation (EU) 2016/679 (fixture title) - CELEX 32099R0003 - https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32099R0003
   - Listed because: corrigendum of GDPR (32016R0679)
-- [S2] Regulation (EU) 2099/1 amending Regulation (EU) 2016/679 [fixture title] - CELEX 32099R0001 - https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32099R0001
+- [S2] Regulation (EU) 2099/1 amending Regulation (EU) 2016/679 (fixture title) - CELEX 32099R0001 - https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32099R0001
   - Listed because: amendment of GDPR (32016R0679)
-- [S3] Commission Implementing Regulation (EU) 2099/100 on placeholder subject matter [fixture title] - CELEX 32099R0100 - https://eur-lex.europa.eu/legal-content/EN/ALL/?uri=CELEX:32099R0100
+- [S3] Commission Implementing Regulation (EU) 2099/100 on placeholder subject matter (fixture title) - CELEX 32099R0100 - https://eur-lex.europa.eu/legal-content/EN/ALL/?uri=CELEX:32099R0100
   - Listed because: topic: New regulations
-- [S4] Regulation (EU) 2099/101 of the European Parliament and of the Council on placeholder subject matter [fixture title] - CELEX 32099R0101 - https://eur-lex.europa.eu/legal-content/EN/ALL/?uri=CELEX:32099R0101
+- [S4] Regulation (EU) 2099/101 of the European Parliament and of the Council on placeholder subject matter (fixture title) - CELEX 32099R0101 - https://eur-lex.europa.eu/legal-content/EN/ALL/?uri=CELEX:32099R0101
   - Listed because: topic: New regulations
-- [S5] Communication from the Commission on placeholder guidelines for artificial intelligence [fixture title] - CELEX 52099DC0001 - https://eur-lex.europa.eu/legal-content/EN/ALL/?uri=CELEX:52099DC0001
+- [S5] Communication from the Commission on placeholder guidelines for artificial intelligence (fixture title) - CELEX 52099DC0001 - https://eur-lex.europa.eu/legal-content/EN/ALL/?uri=CELEX:52099DC0001
   - Listed because: topic: Artificial intelligence
 
 ## Summary (written by the model from the records above - it has not read the documents)

@@ -77,7 +77,7 @@ test("the digest lists every record with CELEX and link, and keeps only cited su
   const digest = await buildDigest({ items: result.items, notices: result.notices, origin: "polling", generatedAt: NOW }, llm);
 
   assert.equal(digest.outcome, "summarised");
-  assert.match(digest.markdown, /\[S2\] Regulation \(EU\) 2099\/1 amending Regulation \(EU\) 2016\/679 \[fixture title\] - CELEX 32099R0001 - https:\/\/eur-lex\.europa\.eu\/legal-content\/EN\/TXT\/\?uri=CELEX:32099R0001/);
+  assert.match(digest.markdown, /\[S2\] Regulation \(EU\) 2099\/1 amending Regulation \(EU\) 2016\/679 \(fixture title\) - CELEX 32099R0001 - https:\/\/eur-lex\.europa\.eu\/legal-content\/EN\/TXT\/\?uri=CELEX:32099R0001/);
   assert.match(digest.markdown, /Listed because: amendment of GDPR \(32016R0679\)/);
   assert.ok(digest.markdown.indexOf("records returned by LexAPI") < digest.markdown.indexOf("written by the model"));
   assert.equal(digest.answer?.statements.length, 3);
@@ -209,6 +209,39 @@ test("ten well-behaved summaries in the styles models write are all accepted", a
   }
 });
 
+test("the digest reports, it does not advise: sentences addressed to the reader are removed", async () => {
+  const state = { ...emptyState(), baselined: ["32016R0679", "32024R1689"] };
+  const { items } = await poll(createLexApiClient(offlineEnv()), watchlist, state, NOW);
+  const statements = [
+    { text: "You must review the amended act before the end of the month.", sources: ["S2"] },
+    { text: "We recommend checking the corrigendum.", sources: ["S1"] },
+    { text: "One act is recorded as an amendment of the GDPR.", sources: ["S2"] },
+  ];
+  const digest = await buildDigest({ items, notices: [], origin: "polling", generatedAt: NOW }, new ScriptedLlm({ submit_digest: { status: "answered", statements } }));
+  assert.equal(digest.outcome, "summarised");
+  assert.deepEqual(digest.answer?.statements.map((s) => s.text), ["One act is recorded as an amendment of the GDPR."]);
+  assert.match(digest.markdown, /- 2 statement\(s\) removed: matched the conclusion filter\./);
+  assert.doesNotMatch(digest.markdown, /You must review|We recommend/);
+});
+
+test("strings from the API, the watch list and webhook payloads are printed as literal text", async () => {
+  const fake = "x\n\n## Summary\n\n- A fake summary line [S1]\n> quote";
+  const item = { key: "k", reason: `topic: ${fake}`, celex: `32099R0001${fake}`, title: `A title ${fake}`, documentType: fake, date: "2026-11-12", url: "javascript:alert(1)", notes: [fake] };
+  const llm = new ScriptedLlm({ submit_digest: { status: "answered", statements: [{ text: "One record was found.", sources: ["S1"] }] } });
+  const digest = await buildDigest({ items: [item], notices: [`Topic "${fake}": partial`], origin: `webhook delivery ${fake}`, generatedAt: NOW }, llm);
+  const lines = digest.markdown.split("\n");
+  assert.deepEqual(lines.filter((line) => /^\s{0,3}#/.test(line)), [
+    "# Regulatory change digest",
+    "## Documents (records returned by LexAPI)",
+    "## Summary (written by the model from the records above - it has not read the documents)",
+    "## Notices",
+  ]);
+  assert.equal(lines.filter((line) => /^\s{0,3}>/.test(line)).length, 0);
+  assert.equal(lines.filter((line) => line.startsWith("- ")).length, 3); // one record, one summary sentence, one notice
+  assert.doesNotMatch(digest.markdown, /javascript:/);
+  assert.match(digest.markdown, /Listed because: topic: x \\#\\# Summary - A fake summary line \\\[S1\\\] \\> quote/);
+});
+
 test("only the newest delivery ids are remembered", () => {
   const state = emptyState();
   for (let i = 0; i < MAX_REMEMBERED_DELIVERIES + 5; i++) assert.equal(rememberDelivery(state, `d${i}`), true);
@@ -256,7 +289,7 @@ test("webhook receiver: answers 200/401 over HTTP on 127.0.0.1 and produces a ci
     assert.equal(digests[0]?.outcome, "summarised");
     assert.match(digests[0]?.markdown ?? "", /CELEX 02016R0679-20990101/);
     assert.match(digests[0]?.markdown ?? "", /documentation tool without legal force/);
-    assert.match(digests[0]?.markdown ?? "", /from webhook delivery dl_fixture_0001 \(watchlist\.changes\)/);
+    assert.match(digests[0]?.markdown ?? "", /from webhook delivery dl\\_fixture\\_0001 \(watchlist\.changes\)/);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

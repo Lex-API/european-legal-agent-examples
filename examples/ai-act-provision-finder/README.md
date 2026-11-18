@@ -28,13 +28,16 @@ It finds provisions to read. It does not find the obligations that apply.
    The check (`shared/grounding.ts`) **rejects** the draft if:
    - it cites a source id that was not retrieved in this run;
    - a quote is shorter than three words, or is not a verbatim excerpt of the source it names;
-   - a quotation inside a note (two words or more, or eight characters or more) is verbatim
-     neither in a source that note cites nor in the system description you gave, or a quotation mark is left open;
+   - a quotation inside a note - any quotation that contains a letter - is not verbatim in a
+     source that note cites, or a quotation mark is left open. Words from the system description you gave are not a
+     source: the prompt tells the model to paraphrase them without quotation marks;
    - a quote or note contains a line break or a control or format character (terminal escapes,
      zero-width and bidi characters), or starts with a heading, blockquote, table or code-fence
      marker;
-   - a note contains an HTML character reference (`&quot;`), a citation marker of its own
-     (`[S1]`), or a URL that is not the URL of a source it cites;
+   - a note contains an HTML character reference (`&quot;`), a URL that is not the URL of a
+     source it cites, or a citation marker of its own: a bracketed token (`[ ]`, `［ ］`, `⟦ ⟧`,
+     `【 】`, `〔 〕`) whose content, after NFKC normalisation and with spaces removed, is
+     `S<digits>` (or a list such as `S1,S2`) or starts with `Source`;
    - there are more than 12 quotes or 12 notes, a quote is longer than 1,200 characters, or a
      note is longer than 600.
 
@@ -45,25 +48,33 @@ It finds provisions to read. It does not find the obligations that apply.
    acute accent, a doubled `''`, and `,,` used as an opening mark. Punctuation and ellipses at the
    two ends of a quotation are ignored, and the case of its first letter may differ. An apostrophe
    inside a word (`provider's`, `don't`, `subjects'`) is not a quotation mark. A quote is printed
-   with the source's own characters. Other quotation conventions are not recognised.
+   with the source's own characters, without the model's end punctuation. Other quotation
+   conventions are not recognised. An empty note is dropped.
 
    It **removes**, and only counts:
    - notes that cite no source;
    - notes that match the conclusion filter (`shared/conclusions.ts`): classifications ("is
      high-risk", "falls under Annex III"), duties ("the provider must", "you need to", "must
-     comply") and applicability ("applies to your system"). A match is ignored when an earlier
-     word of the same sentence is `whether`, `if`, `how`, `which`, `may`, `might` or `could`,
-     because such a sentence frames a question. This is a blunt lexical filter for English
-     output: it does not catch every phrasing, and it does not cover other languages.
+     comply"), applicability ("applies to your system") and advice ("we recommend").
+     A match is ignored only when it sits in a clause that frames a question: the nearest
+     earlier `whether`, `if`, `when`, `how` or `which` of the same sentence is not followed by
+     `means`, `is why`, `makes` or `shows`; between that word and the match there is no clause
+     break (`, ; : ( )` or a dash) and no `you`, `your` or `yours`; and, for `if` and `when`, a
+     clause break follows the match ("If the tool is high-risk, Article 9 describes ..."). A
+     quotation already verified as verbatim from a cited source is masked before the filter runs.
+     This is a blunt lexical filter for English output: it does not catch every phrasing, it
+     removes some legitimate sentences, and it does not cover other languages.
 
    A rejected draft is retried once with the violations; after a second failure only the
    retrieved sources are printed.
-5. **Render** - quoted source text and model-written notes go in separate sections. Everything the
-   model wrote that is printed - the notes and the search queries in the header - and your own
-   description go through one function (`plainText` in `shared/text.ts`) that escapes Markdown,
-   so none of it can pass for a heading or a quote. Removed notes are counted, not printed. A
-   note that quotes your description is marked as doing so. Every source line carries the CELEX
-   number, the article id and a EUR-Lex link.
+5. **Render** - quoted source text and model-written notes go in separate sections.
+   Everything printed that this program did not write itself goes through one function
+   (`plainText` in `shared/text.ts`): the model's notes and search queries, your description, and
+   every string from the API (titles, article ids, CELEX, ECLI, notes). It removes control and
+   format characters, collapses whitespace and escapes Markdown, so none of it can pass for a
+   heading or a quote. A link is printed only if it parses as an http(s) URL.
+   Removed notes are counted, not printed. Every source line carries the CELEX number, the
+   article id and a EUR-Lex link.
 
 If the search returns no AI Act article, the output says "No supporting text found" and the model
 is not asked to draft anything.
@@ -162,9 +173,9 @@ Hits: 12 in total, 3 from other acts (not shown). Model: scripted (no model was 
 
 ## Sources
 
-- [S1] Regulation (EU) 2024/1689 (Artificial Intelligence Act) [fixture title] - Article 6 (article id art_6) - CELEX 32024R1689 - https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32024R1689
-- [S2] Regulation (EU) 2024/1689 (Artificial Intelligence Act) [fixture title] - Article 9 (article id art_9) - CELEX 32024R1689 - https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32024R1689
-- [S3] Regulation (EU) 2024/1689 (Artificial Intelligence Act), consolidated [fixture title] - Article 50 (article id art_50) - CELEX 02024R1689-20990101 - https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02024R1689-20990101
+- [S1] Regulation (EU) 2024/1689 (Artificial Intelligence Act) (fixture title) - Article 6 (article id art\_6) - CELEX 32024R1689 - https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32024R1689
+- [S2] Regulation (EU) 2024/1689 (Artificial Intelligence Act) (fixture title) - Article 9 (article id art\_9) - CELEX 32024R1689 - https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32024R1689
+- [S3] Regulation (EU) 2024/1689 (Artificial Intelligence Act), consolidated (fixture title) - Article 50 (article id art\_50) - CELEX 02024R1689-20990101 - https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02024R1689-20990101
   - Note: The act as amended, consolidated as of 2099-01-01; not the authentic text. Only the Official Journal text is authentic. Authentic act: CELEX 32024R1689 as published in the Official Journal (https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32024R1689).
 
 ## What a human must decide

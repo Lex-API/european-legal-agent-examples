@@ -7,7 +7,7 @@
     {
       "id": "asof:32016R0679:art_46",
       "law_id": "32016R0679",
-      "law_title": "Regulation (EU) 2016/679 (General Data Protection Regulation) [fixture title]",
+      "law_title": "Regulation (EU) 2016/679 (General Data Protection Regulation) (fixture title)",
       "article_ref": "art_46",
       "language": "en",
       "score": 0.803,
@@ -29,7 +29,7 @@
     {
       "id": "fx-gdpr-0002",
       "law_id": "32016R0679",
-      "law_title": "Regulation (EU) 2016/679 (General Data Protection Regulation) [fixture title]",
+      "law_title": "Regulation (EU) 2016/679 (General Data Protection Regulation) (fixture title)",
       "article_ref": "art_45",
       "language": "en",
       "score": 0.781,

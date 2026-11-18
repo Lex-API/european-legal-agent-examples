@@ -9,19 +9,22 @@
  *   1. a quote or statement cites a source id that was not retrieved in this run;
  *   2. a quote is not a verbatim excerpt of the source it names, or is shorter
  *      than three words;
- *   3. a quotation inside a statement (two words or more, or eight characters
- *      or more) is verbatim neither in a source that statement cites nor in the
- *      user's own input, or a quotation mark is left open;
+ *   3. a quotation inside a statement (any quotation that contains a letter)
+ *      is not verbatim in a source that statement cites, or a quotation mark
+ *      is left open;
  *   4. a quote or statement breaks the rules for model text in `text.ts`
  *      (line breaks, control characters, leading block markers, length; for
- *      statements also HTML character references and `[S1]`-style markers);
+ *      statements also HTML character references and bracketed citation
+ *      markers such as `[S1]`);
  *   5. a statement contains a URL that is not the URL of a source it cites;
  *   6. there are more than 12 quotes or more than 12 statements.
  *
  * It REMOVES, and counts without repeating them:
  *   7. statements that cite no source;
  *   8. statements that match the conclusion filter (`conclusions.ts`), when
- *      the caller passes patterns.
+ *      the caller passes patterns. Verified quotations are masked first.
+ *
+ * A statement that is empty or only whitespace is dropped silently.
  *
  * "Verbatim" means: after normalisation (see `normalise`), the words appear
  * in the source in the same order, starting and ending on a word boundary.
@@ -36,7 +39,19 @@
  * is why the output keeps quoted text and model text in separate sections.
  */
 import { statesConclusion } from "./conclusions.ts";
-import { findVerbatim, modelTextProblem, normalise, plainText, quotationsIn, trimQuotation, urlsIn, wordCount, length } from "./text.ts";
+import {
+  findVerbatim,
+  hasLetter,
+  maskQuotations,
+  modelTextProblem,
+  normalise,
+  plainText,
+  printableUrl,
+  quotationSpans,
+  trimQuotation,
+  urlsIn,
+  wordCount,
+} from "./text.ts";
 
 export { normalise, plainText } from "./text.ts";
 
@@ -80,17 +95,12 @@ export interface Draft {
   statements: DraftStatement[];
 }
 
-export interface GroundedStatement extends DraftStatement {
-  /** The statement quotes words from the user's own input (not from a source). */
-  quotesUserInput: boolean;
-}
-
 /** A draft that passed validation. */
 export interface GroundedAnswer {
   status: "answered" | "no_support";
   /** `text` is the excerpt as it stands in the source. */
   quotes: DraftQuote[];
-  statements: GroundedStatement[];
+  statements: DraftStatement[];
   /** How many statements were removed, by reason. Their text is not kept. */
   removed: { uncited: number; conclusion: number };
 }
@@ -107,18 +117,11 @@ export class GroundingError extends Error {
 export interface ValidateOptions {
   /** Conclusion patterns (see `conclusions.ts`); statements matching one are removed. */
   conclusionPatterns?: string[];
-  /** The user's own input. A statement may quote it; such a quotation is not presented as law. */
-  userText?: string;
 }
 
 export const MAX_QUOTES = 12;
 export const MAX_STATEMENTS = 12;
 export const MIN_QUOTE_WORDS = 3;
-
-/** Quotations long enough to carry meaning: two words or more, or eight characters or more. */
-function mustBeVerbatim(quotation: string): boolean {
-  return length(quotation) >= 8 || wordCount(quotation) >= 2;
-}
 
 export function validateDraft(draft: Draft, sources: Source[], options: ValidateOptions = {}): GroundedAnswer {
   const none = { uncited: 0, conclusion: 0 };
@@ -127,7 +130,6 @@ export function validateDraft(draft: Draft, sources: Source[], options: Validate
   // Normalise each source once; drafts can carry many quotes.
   const texts = new Map(sources.map((s) => [s.id, normalise(s.text)]));
   const urls = new Map(sources.map((s) => [s.id, s.url]));
-  const userText = normalise(options.userText ?? "");
   const violations: string[] = [];
   if (draft.quotes.length > MAX_QUOTES) violations.push(`more than ${MAX_QUOTES} quotes`);
   if (draft.statements.length > MAX_STATEMENTS) violations.push(`more than ${MAX_STATEMENTS} statements`);
@@ -159,7 +161,7 @@ export function validateDraft(draft: Draft, sources: Source[], options: Validate
     quotes.push({ source: quote.source, text: excerpt });
   }
 
-  const kept: GroundedStatement[] = [];
+  const kept: DraftStatement[] = [];
   const removed = { ...none };
   for (const statement of draft.statements.slice(0, MAX_STATEMENTS)) {
     const ids = [...new Set(statement.sources)];
@@ -168,6 +170,8 @@ export function validateDraft(draft: Draft, sources: Source[], options: Validate
       violations.push(`statement cites ${unknown.map((id) => `"${id}"`).join(", ")}, which was not retrieved`);
       continue;
     }
+    const text = normalise(statement.text);
+    if (text === "") continue; // an empty statement is dropped: there is nothing to print
     if (ids.length === 0) {
       removed.uncited++;
       continue;
@@ -177,34 +181,31 @@ export function validateDraft(draft: Draft, sources: Source[], options: Validate
       violations.push(`a statement ${problem}`);
       continue;
     }
-    const text = normalise(statement.text);
-    if (options.conclusionPatterns && statesConclusion(text, options.conclusionPatterns)) {
-      removed.conclusion++;
-      continue;
-    }
     const foreignUrl = urlsIn(text).find((url) => !ids.some((id) => urls.get(id) === url));
     if (foreignUrl !== undefined) {
       violations.push("a statement contains a URL that is not the URL of a source it cites");
       continue;
     }
-    const quotations = quotationsIn(text);
+    const quotations = quotationSpans(text);
     if (quotations === undefined) {
       violations.push("a statement has an unbalanced quotation mark");
       continue;
     }
+    // Every quotation that contains a letter must be verbatim in a source this statement cites.
     const cited = ids.map((id) => texts.get(id) ?? "");
-    let quotesUserInput = false;
-    let invented: string | undefined;
-    for (const quotation of quotations.map(trimQuotation).filter(mustBeVerbatim)) {
-      if (cited.some((source) => findVerbatim(source, quotation) !== undefined)) continue;
-      if (findVerbatim(userText, quotation) !== undefined) quotesUserInput = true;
-      else invented ??= quotation;
-    }
+    const invented = quotations
+      .map((q) => trimQuotation(q.text))
+      .find((q) => hasLetter(q) && !cited.some((source) => findVerbatim(source, q) !== undefined));
     if (invented !== undefined) {
       violations.push(`a statement contains a quotation that is not in the sources it cites (whole words, in order): "${invented}"`);
       continue;
     }
-    kept.push({ text, sources: ids, quotesUserInput });
+    // The verified quotations are the source's words, not the model's: mask them before the conclusion filter.
+    if (options.conclusionPatterns && statesConclusion(maskQuotations(text, quotations), options.conclusionPatterns)) {
+      removed.conclusion++;
+      continue;
+    }
+    kept.push({ text, sources: ids });
   }
 
   if (violations.length > 0) throw new GroundingError(violations);
@@ -239,7 +240,7 @@ export const DRAFT_SCHEMA = {
     statements: {
       type: "array",
       description:
-        "At most 12 of your own sentences, one plain-text line of at most 600 characters each (no Markdown, no line breaks, no URLs, no [S1] markers in the text). Each lists the source ids that support it.",
+        "At most 12 of your own sentences, one plain-text line of at most 600 characters each (no Markdown, no line breaks, no URLs, no [S1] markers in the text; quotation marks only around words copied exactly from a cited source). Each lists the source ids that support it.",
       items: {
         type: "object",
         properties: {
@@ -300,21 +301,30 @@ export function articleLabel(articleRef: string): string {
   return match ? `Article ${match[1]}` : articleRef;
 }
 
-/** The citation line for one source: title, pinpoint, CELEX, ECLI, link. */
+/**
+ * The citation line for one source: title, pinpoint, ECLI, CELEX, link.
+ * Every part comes from the API, so every part is printed through
+ * `plainText`; a link is printed only if it parses as an http(s) URL.
+ */
 export function citation(source: Source): string {
-  const parts = [source.title];
-  if (source.articleRef) parts.push(`${articleLabel(source.articleRef)} (article id ${source.articleRef})`);
+  const parts = [plainText(source.title)];
+  if (source.articleRef) parts.push(`${plainText(articleLabel(source.articleRef))} (article id ${plainText(source.articleRef)})`);
   if (source.paragraph !== undefined) parts.push(`paragraph ${source.paragraph}`);
-  if (source.ecli) parts.push(source.ecli);
-  parts.push(`CELEX ${source.celex}`);
-  parts.push(source.url);
+  if (source.ecli) parts.push(plainText(source.ecli));
+  parts.push(`CELEX ${plainText(source.celex)}`);
+  const url = printableUrl(source.url);
+  if (url) parts.push(url);
   return parts.join(" - ");
 }
 
+/** A source's citation line followed by its caveats, as a list item. */
+export function sourceListItem(source: Source): string {
+  return [`- [${source.id}] ${citation(source)}`, ...source.notes.map((note) => `  - Note: ${plainText(note)}`)].join("\n");
+}
+
 /** One model-written statement as a list item, followed by its citation markers. */
-export function renderStatement(statement: GroundedStatement): string {
-  const note = statement.quotesUserInput ? " (the quoted words are from your input, not from a source)" : "";
-  return `- ${plainText(statement.text)} ${statement.sources.map((id) => `[${id}]`).join("")}${note}`;
+export function renderStatement(statement: DraftStatement): string {
+  return `- ${plainText(statement.text)} ${statement.sources.map((id) => `[${id}]`).join("")}`;
 }
 
 /** What the check removed: counts and reasons only - the removed text is never repeated. */
@@ -361,13 +371,12 @@ export function renderAnswer(answer: GroundedAnswer, sources: Source[], headings
   for (const id of [...used].sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)))) {
     const source = byId.get(id);
     if (!source) continue;
-    lines.push(`- [${id}] ${citation(source)}`);
-    for (const note of source.notes) lines.push(`  - Note: ${note}`);
+    lines.push(sourceListItem(source));
   }
   return lines.join("\n") + "\n";
 }
 
-/** The sources as shown to the model: id, citation line, caveats, then the text. */
+/** The sources as shown to the MODEL (not printed): id, citation line, caveats, then the text. */
 export function sourcesForPrompt(sources: Source[]): string {
   return sources
     .map((s) => [`<source id="${s.id}">`, citation(s), ...s.notes.map((n) => `Note: ${n}`), "", s.text, "</source>"].join("\n"))

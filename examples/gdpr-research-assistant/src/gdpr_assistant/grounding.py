@@ -10,19 +10,23 @@ The model never writes the final answer directly. It returns a draft:
 1. a quote or statement cites a source id that was not retrieved in this run;
 2. a quote is not a verbatim excerpt of the source it names, or is shorter
    than three words;
-3. a quotation inside a statement (two words or more, or eight characters or
-   more) is verbatim neither in a source that statement cites nor in the
-   user's own question, or a quotation mark is left open;
+3. a quotation inside a statement (any quotation that contains a letter) is
+   not verbatim in a source that statement cites, or a quotation mark is left
+   open;
 4. a quote or statement breaks the rules for model text in ``text.py`` (line
    breaks, control characters, leading block markers, length; for statements
-   also HTML character references and ``[S1]``-style markers);
+   also HTML character references and bracketed citation markers such as
+   ``[S1]``);
 5. a statement contains a URL that is not the URL of a source it cites;
 6. there are more than 12 quotes or more than 12 statements.
 
 It REMOVES, and counts without repeating them:
 
 7. statements that cite no source;
-8. statements that match the conclusion filter (``conclusions.py``).
+8. statements that match the conclusion filter (``conclusions.py``). Verified
+   quotations are masked first.
+
+A statement that is empty or only whitespace is dropped silently.
 
 "Verbatim" means: after normalisation (see ``text.normalise``), the words
 appear in the source in the same order, starting and ending on a word
@@ -47,10 +51,13 @@ from urllib.parse import quote as url_quote
 from gdpr_assistant.conclusions import states_conclusion
 from gdpr_assistant.text import (
     find_verbatim,
+    has_letter,
+    mask_quotations,
     model_text_problem,
     normalise,
     plain_text,
-    quotations_in,
+    printable_url,
+    quotation_spans,
     trim_quotation,
     urls_in,
     word_count,
@@ -87,8 +94,6 @@ class Quote:
 class Statement:
     text: str
     sources: tuple[str, ...]
-    #: The statement quotes words from the user's own question (not from a source).
-    quotes_user_input: bool = False
 
 
 @dataclass(frozen=True)
@@ -143,23 +148,15 @@ def _parse(draft: Any) -> _Parsed:
     return parsed
 
 
-def _must_be_verbatim(quotation: str) -> bool:
-    """Quotations long enough to carry meaning: two words or more, or eight characters or more."""
-    return len(quotation) >= 8 or word_count(quotation) >= 2
-
-
 def validate_draft(
     draft: Any,
     sources: list[Source],
     *,
-    user_text: str = "",
     conclusion_patterns: tuple[str, ...] | None = None,
 ) -> GroundedAnswer:
     """Check a draft against the retrieved sources.
 
-    ``user_text`` is the user's own input: a statement may quote it, and such a
-    quotation is not presented as law. Statements matching one of
-    ``conclusion_patterns`` are removed.
+    Statements matching one of ``conclusion_patterns`` are removed.
     """
     parsed = _parse(draft)
     if parsed.status == "no_support":
@@ -168,7 +165,6 @@ def validate_draft(
     # Normalise each source once; drafts can carry many quotes.
     texts = {s.id: normalise(s.text) for s in sources}
     urls = {s.id: s.url for s in sources}
-    user = normalise(user_text)
     violations: list[str] = []
     if len(parsed.quotes) > MAX_QUOTES:
         violations.append(f"more than {MAX_QUOTES} quotes")
@@ -206,42 +202,43 @@ def validate_draft(
             cited = ", ".join(f'"{i}"' for i in unknown)
             violations.append(f"statement cites {cited}, which was not retrieved")
             continue
+        text = normalise(st.text)
+        if not text:
+            continue  # an empty statement is dropped: there is nothing to print
         if not ids:
             uncited += 1
             continue
         if problem := model_text_problem(st.text, "statement"):
             violations.append(f"a statement {problem}")
             continue
-        text = normalise(st.text)
-        if conclusion_patterns and states_conclusion(text, conclusion_patterns):
-            conclusion += 1
-            continue
         if any(url not in [urls[i] for i in ids] for url in urls_in(text)):
             violations.append("a statement contains a URL that is not the URL of a source it cites")
             continue
-        quotations = quotations_in(text)
+        quotations = quotation_spans(text)
         if quotations is None:
             violations.append("a statement has an unbalanced quotation mark")
             continue
+        # Every quotation that contains a letter must be verbatim in a source this statement cites.
         cited_texts = [texts[i] for i in ids]
-        quotes_user_input = False
-        invented: str | None = None
-        for quotation in map(trim_quotation, quotations):
-            if not _must_be_verbatim(quotation):
-                continue
-            if any(find_verbatim(t, quotation) is not None for t in cited_texts):
-                continue
-            if find_verbatim(user, quotation) is not None:
-                quotes_user_input = True
-            elif invented is None:
-                invented = quotation
+        invented = next(
+            (
+                q
+                for q in (trim_quotation(span.text) for span in quotations)
+                if has_letter(q) and not any(find_verbatim(t, q) is not None for t in cited_texts)
+            ),
+            None,
+        )
         if invented is not None:
             violations.append(
                 "a statement contains a quotation that is not in the sources it cites "
                 f'(whole words, in order): "{invented}"'
             )
             continue
-        kept.append(Statement(text, ids, quotes_user_input))
+        # The verified quotations are the source's words, not the model's: mask them before the conclusion filter.
+        if conclusion_patterns and states_conclusion(mask_quotations(text, quotations), conclusion_patterns):
+            conclusion += 1
+            continue
+        kept.append(Statement(text, ids))
 
     if violations:
         raise GroundingError(violations)
@@ -275,7 +272,8 @@ DRAFT_SCHEMA: dict[str, Any] = {
         "statements": {
             "type": "array",
             "description": "At most 12 of your own sentences, one plain-text line of at most 600 characters each "
-            "(no Markdown, no line breaks, no URLs, no [S1] markers in the text). "
+            "(no Markdown, no line breaks, no URLs, no [S1] markers in the text; "
+            "quotation marks only around words copied exactly from a cited source). "
             "Each lists the source ids that support it.",
             "items": {
                 "type": "object",
@@ -307,17 +305,27 @@ def article_label(article_ref: str) -> str:
 
 
 def citation(source: Source) -> str:
-    """The citation line for one source: title, pinpoint, ECLI, CELEX, link."""
-    parts = [source.title]
+    """The citation line for one source: title, pinpoint, ECLI, CELEX, link.
+
+    Every part comes from the API, so every part is printed through
+    ``plain_text``; a link is printed only if it parses as an http(s) URL.
+    """
+    parts = [plain_text(source.title)]
     if source.article_ref:
-        parts.append(f"{article_label(source.article_ref)} (article id {source.article_ref})")
+        parts.append(f"{plain_text(article_label(source.article_ref))} (article id {plain_text(source.article_ref)})")
     if source.paragraph is not None:
         parts.append(f"paragraph {source.paragraph}")
     if source.ecli:
-        parts.append(source.ecli)
-    parts.append(f"CELEX {source.celex}")
-    parts.append(source.url)
+        parts.append(plain_text(source.ecli))
+    parts.append(f"CELEX {plain_text(source.celex)}")
+    if url := printable_url(source.url):
+        parts.append(url)
     return " - ".join(parts)
+
+
+def source_list_item(source: Source) -> str:
+    """A source's citation line followed by its caveats, as a list item."""
+    return "\n".join([f"- [{source.id}] {citation(source)}", *(f"  - Note: {plain_text(n)}" for n in source.notes)])
 
 
 def render_removed(removed: Removed) -> list[str]:
@@ -346,8 +354,7 @@ def render_answer(answer: GroundedAnswer, sources: list[Source]) -> str:
         lines += ["_None._", ""]
     for st in answer.statements:
         used.update(st.sources)
-        note = " (the quoted words are from your question, not from a source)" if st.quotes_user_input else ""
-        lines.append(f"- {plain_text(st.text)} " + "".join(f"[{i}]" for i in st.sources) + note)
+        lines.append(f"- {plain_text(st.text)} " + "".join(f"[{i}]" for i in st.sources))
     if answer.statements:
         lines.append("")
 
@@ -357,14 +364,12 @@ def render_answer(answer: GroundedAnswer, sources: list[Source]) -> str:
 
     lines += ["## Sources", ""]
     for source_id in sorted(used, key=lambda i: int(i[1:])):
-        source = by_id[source_id]
-        lines.append(f"- [{source_id}] {citation(source)}")
-        lines += [f"  - Note: {note}" for note in source.notes]
+        lines.append(source_list_item(by_id[source_id]))
     return "\n".join(lines) + "\n"
 
 
 def sources_for_prompt(sources: list[Source]) -> str:
-    """The sources as shown to the model: id, citation line, caveats, then the text."""
+    """The sources as shown to the MODEL (not printed): id, citation line, caveats, then the text."""
     blocks = []
     for s in sources:
         notes = [f"Note: {n}" for n in s.notes]

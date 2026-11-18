@@ -15,9 +15,13 @@
    "id": "S3",
    "url": "https://example.org/s3",
    "text": "the trans\u00adfer shall not take\u00a0place \u201cat once\u201d"
+  },
+  {
+   "id": "S4",
+   "url": "https://example.org/s4",
+   "text": "Point 9: you must keep logs where the tool is in use."
   }
  ],
- "userText": "A tool that ranks job applicants and chats with candidates",
  "normalise": [
   [
    "  a\u00a0b\tc \u2003d  ",
@@ -42,6 +46,14 @@
   [
    "a\u0085b\u2028c",
    "a b c"
+  ],
+  [
+   "\ufeffabc ",
+   "\ufeffabc"
+  ],
+  [
+   " \u00a0 abc \u3000",
+   "abc"
   ]
  ],
  "quotations": [
@@ -145,6 +157,22 @@
   [
    "\uff11. item",
    "\uff11. item"
+  ],
+  [
+   "a\u001b[31mb\u200bc\u202ed\u0007",
+   "a\\[31mbcd"
+  ],
+  [
+   "line1\nline2\t3\u2028four",
+   "line1 line2 3 four"
+  ],
+  [
+   "\ufeff- item",
+   "\\- item"
+  ],
+  [
+   "soft\u00adhyphen",
+   "softhyphen"
   ]
  ],
  "modelTextProblems": [
@@ -193,197 +221,422 @@
   {
    "text": "The system is high-risk under this article.",
    "reader": false,
-   "aiAct": true
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
    "text": "The system is high risk.",
    "reader": false,
-   "aiAct": true
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
    "text": "The tool is not high-risk.",
    "reader": false,
-   "aiAct": true
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
    "text": "This is a high-risk AI system.",
    "reader": false,
-   "aiAct": true
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
    "text": "The system is classified as high-risk.",
    "reader": false,
-   "aiAct": true
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
    "text": "The CV ranker qualifies as high-risk.",
    "reader": false,
-   "aiAct": true
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
    "text": "The tool falls under Annex III.",
    "reader": false,
-   "aiAct": true
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
    "text": "The tool falls within Annex III.",
    "reader": false,
-   "aiAct": true
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
    "text": "Emotion recognition at work is prohibited under Article 5.",
    "reader": false,
-   "aiAct": true
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
    "text": "The provider must establish a risk management system.",
    "reader": false,
-   "aiAct": true
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
    "text": "The provider has to keep logs.",
    "reader": false,
-   "aiAct": true
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
    "text": "Providers of such systems must comply with Article 9.",
    "reader": false,
-   "aiAct": true
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
    "text": "Deployers are obliged to inform workers.",
    "reader": false,
-   "aiAct": true
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
    "text": "It is mandatory to carry out a conformity assessment.",
    "reader": false,
-   "aiAct": true
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
    "text": "These obligations apply to the system.",
    "reader": false,
-   "aiAct": true
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
    "text": "The tool is exempt.",
    "reader": false,
-   "aiAct": true
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
    "text": "Your system qualifies as a high-risk AI system.",
    "reader": false,
-   "aiAct": true
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
    "text": "You must inform candidates.",
    "reader": true,
-   "aiAct": true
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
    "text": "You need to register the system.",
    "reader": true,
-   "aiAct": true
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
    "text": "You should register the system.",
    "reader": true,
-   "aiAct": true
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
    "text": "You are required to appoint a representative.",
    "reader": true,
-   "aiAct": true
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
    "text": "Your processing is lawful.",
    "reader": true,
-   "aiAct": true
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
    "text": "Your company must keep records.",
    "reader": true,
-   "aiAct": true
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
    "text": "The tool is compliant with this provision.",
    "reader": true,
-   "aiAct": true
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
    "text": "The transfer is not compliant.",
    "reader": true,
-   "aiAct": true
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
    "text": "These obligations apply to your system.",
    "reader": true,
-   "aiAct": true
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
    "text": "This article applies to you.",
    "reader": true,
-   "aiAct": true
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
    "text": "This is a question. You must act now.",
    "reader": true,
-   "aiAct": true
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
-   "text": "Whether the system falls in this category is a question for a qualified person.",
-   "reader": false,
-   "aiAct": false
+   "text": "You must review the amended act.",
+   "reader": true,
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
-   "text": "Whether a CV-ranking tool falls within Annex III is for a qualified person to decide.",
-   "reader": false,
-   "aiAct": false
+   "text": "We recommend reviewing the amended act.",
+   "reader": true,
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
-   "text": "If the system is high-risk, this article describes a risk management process that may be worth reading.",
-   "reader": false,
-   "aiAct": false
+   "text": "You will need to update your records.",
+   "reader": true,
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
-   "text": "This article sets out how a system is assigned to a category.",
-   "reader": false,
-   "aiAct": false
+   "text": "The safest course is to stop the transfer.",
+   "reader": true,
+   "aiAct": true,
+   "kind": "conclusion"
   },
   {
-   "text": "The provision on telling people they are interacting with an AI system may be worth reading.",
+   "text": "In your position the clauses are enough.",
+   "reader": true,
+   "aiAct": true,
+   "kind": "conclusion"
+  },
+  {
+   "text": "Your company's processing is lawful.",
+   "reader": true,
+   "aiAct": true,
+   "kind": "conclusion"
+  },
+  {
+   "text": "A permit is not needed for your transfer.",
+   "reader": true,
+   "aiAct": true,
+   "kind": "conclusion"
+  },
+  {
+   "text": "\u00f1you must register.",
+   "reader": true,
+   "aiAct": true,
+   "kind": "conclusion"
+  },
+  {
+   "text": "If you deploy this, it is high-risk and you must register it.",
+   "reader": true,
+   "aiAct": true,
+   "kind": "hedged attack"
+  },
+  {
+   "text": "Which means your system is high-risk.",
+   "reader": true,
+   "aiAct": true,
+   "kind": "hedged attack"
+  },
+  {
+   "text": "It may be noted that the system is prohibited.",
    "reader": false,
-   "aiAct": false
+   "aiAct": true,
+   "kind": "hedged attack"
+  },
+  {
+   "text": "The tool, which ranks CVs, is high-risk.",
+   "reader": false,
+   "aiAct": true,
+   "kind": "hedged attack"
+  },
+  {
+   "text": "Your tool, which screens applicants, is high-risk.",
+   "reader": false,
+   "aiAct": true,
+   "kind": "hedged attack"
+  },
+  {
+   "text": "As the system may be used for hiring, it is high-risk and must be registered.",
+   "reader": false,
+   "aiAct": true,
+   "kind": "hedged attack"
+  },
+  {
+   "text": "Whether a CV-ranking tool falls within Annex III is for a human to decide - here the system is high-risk.",
+   "reader": false,
+   "aiAct": true,
+   "kind": "hedged attack"
+  },
+  {
+   "text": "How convenient: you must register the system.",
+   "reader": true,
+   "aiAct": true,
+   "kind": "hedged attack"
+  },
+  {
+   "text": "Which means you must register.",
+   "reader": true,
+   "aiAct": true,
+   "kind": "hedged attack"
+  },
+  {
+   "text": "If it ranks CVs the system is high-risk.",
+   "reader": false,
+   "aiAct": true,
+   "kind": "hedged attack"
+  },
+  {
+   "text": "When in doubt, your system is high-risk.",
+   "reader": true,
+   "aiAct": true,
+   "kind": "hedged attack"
+  },
+  {
+   "text": "Whether you like it or not, you must register the system.",
+   "reader": true,
+   "aiAct": true,
+   "kind": "hedged attack"
+  },
+  {
+   "text": "How this works: the provider must keep logs.",
+   "reader": false,
+   "aiAct": true,
+   "kind": "hedged attack"
+  },
+  {
+   "text": "If so the tool is compliant.",
+   "reader": true,
+   "aiAct": true,
+   "kind": "hedged attack"
+  },
+  {
+   "text": "Whether a CV-ranking tool falls within Annex III is for a human to decide.",
+   "reader": false,
+   "aiAct": false,
+   "kind": "legitimate"
+  },
+  {
+   "text": "Whether you must register the system is for a qualified person to decide.",
+   "reader": false,
+   "aiAct": false,
+   "kind": "legitimate"
+  },
+  {
+   "text": "If the tool is high-risk, Article 9 describes the risk management system.",
+   "reader": false,
+   "aiAct": false,
+   "kind": "legitimate"
+  },
+  {
+   "text": "Article 6(3) sets out conditions under which a system listed in Annex III is not considered high-risk.",
+   "reader": false,
+   "aiAct": false,
+   "kind": "legitimate"
+  },
+  {
+   "text": "This article sets out how a system is assigned to a category; whether a CV-screening tool is covered by it is a question for a qualified person.",
+   "reader": false,
+   "aiAct": false,
+   "kind": "legitimate"
+  },
+  {
+   "text": "If the system were found to fall in that category, this article describes a risk management process that may be worth reading.",
+   "reader": false,
+   "aiAct": false,
+   "kind": "legitimate"
+  },
+  {
+   "text": "The tool includes a chat interface for candidates, so the provision on telling people they are interacting with an AI system may be worth reading.",
+   "reader": false,
+   "aiAct": false,
+   "kind": "legitimate"
   },
   {
    "text": "A qualified person would have to decide which obligations apply to the system.",
    "reader": false,
-   "aiAct": false
+   "aiAct": false,
+   "kind": "legitimate"
   },
   {
    "text": "It may be worth checking whether you must register the system.",
    "reader": false,
-   "aiAct": false
+   "aiAct": false,
+   "kind": "legitimate"
   },
   {
    "text": "The article describes when a transfer may take place.",
    "reader": false,
-   "aiAct": false
+   "aiAct": false,
+   "kind": "legitimate"
   },
   {
-   "text": "Das System ist ein Hochrisiko-KI-System.",
+   "text": "How the system is classified determines which articles matter.",
    "reader": false,
-   "aiAct": false
+   "aiAct": false,
+   "kind": "legitimate"
   },
   {
-   "text": "Vous devez enregistrer le syst\u00e8me.",
+   "text": "Whether the exemption applies to your system is a legal question.",
    "reader": false,
-   "aiAct": false
+   "aiAct": false,
+   "kind": "legitimate"
+  },
+  {
+   "text": "Whether the system falls in this category is a question for a qualified person.",
+   "reader": false,
+   "aiAct": false,
+   "kind": "legitimate"
+  },
+  {
+   "text": "If the system is high-risk, this article describes a risk management process that may be worth reading.",
+   "reader": false,
+   "aiAct": false,
+   "kind": "legitimate"
+  },
+  {
+   "text": "The provision on telling people they are interacting with an AI system may be worth reading.",
+   "reader": false,
+   "aiAct": false,
+   "kind": "legitimate"
   },
   {
    "text": "The article sets out what a controller has to show.",
    "reader": false,
-   "aiAct": false
+   "aiAct": false,
+   "kind": "legitimate"
+  },
+  {
+   "text": "When a system is high-risk, the provider has to keep logs, according to this article.",
+   "reader": false,
+   "aiAct": true,
+   "kind": "legitimate, removed"
+  },
+  {
+   "text": "Das System ist ein Hochrisiko-KI-System.",
+   "reader": false,
+   "aiAct": false,
+   "kind": "not covered"
+  },
+  {
+   "text": "Vous devez enregistrer le syst\u00e8me.",
+   "reader": false,
+   "aiAct": false,
+   "kind": "not covered"
+  },
+  {
+   "text": "The tool i\u017f compliant.",
+   "reader": false,
+   "aiAct": false,
+   "kind": "not covered"
   }
  ],
  "drafts": [
@@ -1800,8 +2053,8 @@
    "statements": 1
   },
   {
-   "group": "relaxed",
-   "name": "R3 quotation from the user's own input",
+   "group": "review3",
+   "name": "1 a quotation of the user's own input is not a quotation of a source",
    "draft": {
     "status": "answered",
     "quotes": [],
@@ -1814,19 +2067,18 @@
      }
     ]
    },
-   "accept": true,
-   "statements": 1,
-   "quotesUserInput": true
+   "accept": false,
+   "violation": "quotation that is not in the sources it cites"
   },
   {
-   "group": "relaxed",
-   "name": "R3 quotation in neither the sources nor the user's input",
+   "group": "review3",
+   "name": "2 a one-word quotation is checked too",
    "draft": {
     "status": "answered",
     "quotes": [],
     "statements": [
      {
-      "text": "The description mentions a tool that \"ranks tenants\".",
+      "text": "Point 1 calls this \"banned\".",
       "sources": [
        "S1"
       ]
@@ -1835,6 +2087,339 @@
    },
    "accept": false,
    "violation": "quotation that is not in the sources it cites"
+  },
+  {
+   "group": "review3",
+   "name": "2 a short one-word quotation is checked too",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "The status was \"fresh\".",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "quotation that is not in the sources it cites"
+  },
+  {
+   "group": "review3",
+   "name": "2 a one-word quotation that is in the cited source",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "Point 1 uses the word \"unlawful\".",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": true,
+   "statements": 1
+  },
+  {
+   "group": "review3",
+   "name": "2 a quotation without any letter is not checked",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "The figure given is \"42\".",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": true,
+   "statements": 1
+  },
+  {
+   "group": "review3",
+   "name": "5 citation marker look-alike: fullwidth brackets",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "A note \uff3bS2\uff3d about permits.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "citation marker"
+  },
+  {
+   "group": "review3",
+   "name": "5 citation marker look-alike: mathematical brackets",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "A note \u27e6S2\u27e7 about permits.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "citation marker"
+  },
+  {
+   "group": "review3",
+   "name": "5 citation marker look-alike: lenticular brackets with a space",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "A note \u3010S 2\u3011 about permits.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "citation marker"
+  },
+  {
+   "group": "review3",
+   "name": "5 citation marker look-alike: tortoise-shell brackets with a list",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "A note \u3014S1,S2\u3015 about permits.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "citation marker"
+  },
+  {
+   "group": "review3",
+   "name": "5 citation marker look-alike: the word Source",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "A note [Source 2] about permits.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "citation marker"
+  },
+  {
+   "group": "review3",
+   "name": "5 citation marker look-alike: a list with a semicolon",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "A note [S1; S2] about permits.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "citation marker"
+  },
+  {
+   "group": "review3",
+   "name": "5 citation marker look-alike: fullwidth letter and digit",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "A note [\uff33\uff12] about permits.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "citation marker"
+  },
+  {
+   "group": "review3",
+   "name": "5 citation marker look-alike: mismatched bracket pair",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "A note [S2\uff3d about permits.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "citation marker"
+  },
+  {
+   "group": "review3",
+   "name": "5 other bracketed text is not a marker",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "A note [sic] about permits [see point 3].",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": true,
+   "statements": 1
+  },
+  {
+   "group": "review3",
+   "name": "8 a whitespace-only statement is dropped",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": " \t ",
+      "sources": [
+       "S1"
+      ]
+     },
+     {
+      "text": "A note.",
+      "sources": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "accept": true,
+   "statements": 1,
+   "removed": {
+    "uncited": 0,
+    "conclusion": 0
+   }
+  },
+  {
+   "group": "review3",
+   "name": "8 a printed quote has no full stop the source lacks at that point",
+   "draft": {
+    "status": "answered",
+    "quotes": [
+     {
+      "source": "S1",
+      "text": "needs no extra permit."
+     }
+    ],
+    "statements": []
+   },
+   "accept": true,
+   "quotes": [
+    "needs no extra permit"
+   ]
+  },
+  {
+   "group": "review3",
+   "name": "3 the source's own words inside a verified quotation do not trigger the conclusion filter",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "Point 9 reads \"you must keep logs where the tool is in use\".",
+      "sources": [
+       "S4"
+      ]
+     }
+    ]
+   },
+   "accept": true,
+   "patterns": "reader",
+   "statements": 1,
+   "removed": {
+    "uncited": 0,
+    "conclusion": 0
+   }
+  },
+  {
+   "group": "review3",
+   "name": "3 a conclusion outside the verified quotation is still removed",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "Point 9 reads \"you must keep logs\", so you must register.",
+      "sources": [
+       "S4"
+      ]
+     },
+     {
+      "text": "A note.",
+      "sources": [
+       "S4"
+      ]
+     }
+    ]
+   },
+   "accept": true,
+   "patterns": "reader",
+   "statements": 1,
+   "removed": {
+    "uncited": 0,
+    "conclusion": 1
+   }
+  },
+  {
+   "group": "review3",
+   "name": "3 an invented quotation is rejected even in a statement the filter would remove",
+   "draft": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+     {
+      "text": "You must act because point 9 says \"you must register now\".",
+      "sources": [
+       "S4"
+      ]
+     }
+    ]
+   },
+   "accept": false,
+   "violation": "quotation that is not in the sources it cites",
+   "patterns": "reader"
   },
   {
    "group": "relaxed",
@@ -1863,24 +2448,6 @@
     "statements": [
      {
       "text": "- The article covers consent.",
-      "sources": [
-       "S1"
-      ]
-     }
-    ]
-   },
-   "accept": true,
-   "statements": 1
-  },
-  {
-   "group": "relaxed",
-   "name": "a short one-word quotation is not checked",
-   "draft": {
-    "status": "answered",
-    "quotes": [],
-    "statements": [
-     {
-      "text": "The status was \"fresh\".",
       "sources": [
        "S1"
       ]

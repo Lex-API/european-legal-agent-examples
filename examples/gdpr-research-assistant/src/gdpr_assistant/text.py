@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 #: Characters treated as whitespace.
 WHITESPACE = frozenset(
@@ -36,7 +38,9 @@ MAX_STATEMENT_LENGTH = 600
 MAX_QUOTE_LENGTH = 1200
 
 _CHARACTER_REFERENCE = re.compile(r"&(#[0-9]+|#[xX][0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]{1,31});")
-_CITATION_MARKER = re.compile(r"\[ ?[Ss][0-9]+ ?\]")
+_OPENING_BRACKETS = "[\uff3b\u27e6\u3010\u3014"
+_CLOSING_BRACKETS = "]\uff3d\u27e7\u3011\u3015"
+_MARKER_CONTENT = re.compile(r"s[0-9]+([,;]s[0-9]+)*", re.ASCII)
 _MARKDOWN_CONTROL = re.compile(r"[\\`*_#>|\[\]<~&]")
 _LIST_NUMBER = re.compile(r"([0-9]{1,9})([.)]) ")
 
@@ -129,11 +133,34 @@ def model_text_problem(raw: str, kind: str) -> str | None:
             return f"is longer than {MAX_STATEMENT_LENGTH} characters"
         if _CHARACTER_REFERENCE.search(text):
             return "contains an HTML character reference"
-        if _CITATION_MARKER.search(text):
+        if has_citation_marker(text):
             return "contains a citation marker; cite through the sources list instead"
     if kind == "quote" and len(text) > MAX_QUOTE_LENGTH:
         return f"is longer than {MAX_QUOTE_LENGTH} characters"
     return None
+
+
+def has_citation_marker(text: str) -> bool:
+    """Does the text contain something shaped like one of our citation markers?
+
+    Any bracketed token - ``[ ]`` or the look-alikes U+FF3B/U+FF3D, U+27E6/U+27E7,
+    U+3010/U+3011, U+3014/U+3015 - whose content, after Unicode NFKC normalisation
+    and with spaces removed, is ``S<digits>`` (or a list such as ``S1,S2``) or
+    starts with ``Source``.
+    """
+    for i, ch in enumerate(text):
+        if ch not in _OPENING_BRACKETS:
+            continue
+        end = i + 1
+        while end < len(text) and text[end] not in _CLOSING_BRACKETS:
+            end += 1
+        if end >= len(text):
+            continue
+        inner = unicodedata.normalize("NFKC", text[i + 1 : end])
+        content = "".join(c for c in inner if ord(c) not in WHITESPACE).lower()
+        if _MARKER_CONTENT.fullmatch(content) or content.startswith("source"):
+            return True
+    return False
 
 
 def urls_in(text: str) -> list[str]:
@@ -174,7 +201,14 @@ def _is_apostrophe(chars: str, index: int) -> bool:
     return tail == "s" and (_is_ascii_digit(before) or before in (")", "]"))
 
 
-def quotations_in(statement: str) -> list[str] | None:
+@dataclass(frozen=True)
+class Quotation:
+    text: str  # the quoted words, without the marks
+    open: int  # position of the opening mark in the normalised statement
+    close: int  # position of the closing mark
+
+
+def quotation_spans(statement: str) -> list[Quotation] | None:
     """The quotations inside a statement.
 
     The text is normalised first, so only ``"`` and ``'`` remain as quotation
@@ -184,7 +218,7 @@ def quotations_in(statement: str) -> list[str] | None:
     mark is left open.
     """
     chars = normalise(statement)
-    spans: list[str] = []
+    spans: list[Quotation] = []
     opened: tuple[str, int] | None = None
     for i, ch in enumerate(chars):
         if ch not in "\"'":
@@ -194,7 +228,7 @@ def quotations_in(statement: str) -> list[str] | None:
         if ch == "'" and _is_apostrophe(chars, i):
             continue
         if opened:
-            spans.append(chars[opened[1] + 1 : i].strip(" "))
+            spans.append(Quotation(chars[opened[1] + 1 : i].strip(" "), opened[1], i))
             opened = None
             continue
         if ch == "'":
@@ -206,6 +240,24 @@ def quotations_in(statement: str) -> list[str] | None:
                 continue  # subjects' rights
         opened = (ch, i)
     return None if opened else spans
+
+
+def quotations_in(statement: str) -> list[str] | None:
+    spans = quotation_spans(statement)
+    return None if spans is None else [q.text for q in spans]
+
+
+def mask_quotations(statement: str, quotations: list[Quotation]) -> str:
+    """The normalised statement with the words of the given quotations removed (the marks stay)."""
+    chars = list(normalise(statement))
+    for q in quotations:
+        for i in range(q.open + 1, q.close):
+            chars[i] = ""
+    return "".join(chars)
+
+
+def has_letter(text: str) -> bool:
+    return any(is_letter(ch) for ch in text)
 
 
 def trim_quotation(text: str) -> str:
@@ -274,16 +326,33 @@ def find_verbatim(haystack: str, wanted: str) -> str | None:
 
 
 def plain_text(text: str) -> str:
-    """Render text that did not come from this program as literal characters.
+    """Render ANY text that did not come from this program as literal characters.
 
-    Whitespace collapsed, Markdown control characters and ``&`` escaped, and a
-    leading list marker (``-``, ``+``, ``1.``, ``1)``) escaped. This is the ONE
-    function through which model-written text and user input reach the output.
+    Control and format characters removed (a tab or line break becomes a
+    space), whitespace collapsed, Markdown control characters and ``&`` escaped,
+    and a leading list marker (``-``, ``+``, ``1.``, ``1)``) escaped. This is
+    the ONE function through which model-written text, user input and strings
+    from the API reach the output.
     """
-    escaped = _MARKDOWN_CONTROL.sub(lambda m: "\\" + m.group(0), normalise(text))
+    visible = []
+    for ch in text:
+        if ord(ch) in WHITESPACE:
+            visible.append(" ")
+        elif unicodedata.category(ch) not in ("Cc", "Cf"):
+            visible.append(ch)
+    escaped = _MARKDOWN_CONTROL.sub(lambda m: "\\" + m.group(0), normalise("".join(visible)))
     marker = _LIST_NUMBER.match(escaped)
     if marker:
         return f"{marker.group(1)}\\{marker.group(2)}{escaped[marker.end() - 1 :]}"
     if escaped.startswith(("- ", "+ ")):
         return "\\" + escaped
     return escaped
+
+
+def printable_url(url: str) -> str:
+    """A URL as printable text, or ``""`` unless it parses as an http(s) URL."""
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return ""
+    return plain_text(url) if parts.scheme in ("http", "https") and parts.netloc else ""

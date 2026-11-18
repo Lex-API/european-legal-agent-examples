@@ -27,6 +27,15 @@ const END_PUNCTUATION = ".,;:!?…";
 /** Endings after an apostrophe that make it part of a word: provider's, don't, they're, we've, it'll, I'd, I'm. */
 const CONTRACTIONS = new Set(["s", "t", "re", "ve", "ll", "d", "m"]);
 
+/** Trim ASCII spaces only (not `String.prototype.trim`, which also strips U+FEFF and other characters). */
+export function trimSpaces(text: string): string {
+  let start = 0;
+  let end = text.length;
+  while (start < end && text[start] === " ") start++;
+  while (end > start && text[end - 1] === " ") end--;
+  return text.slice(start, end);
+}
+
 export const isLetterOrDigit = (ch: string): boolean => ch !== "" && /^[\p{L}\p{N}\p{M}]$/u.test(ch);
 const isLetter = (ch: string): boolean => ch !== "" && /^[\p{L}\p{M}]$/u.test(ch);
 const isAsciiDigit = (ch: string): boolean => ch.length === 1 && ch >= "0" && ch <= "9";
@@ -59,7 +68,7 @@ export function normalise(text: string): string {
     else if (DOUBLE_MARKS.includes(ch)) parts.push('"');
     else parts.push(ch);
   }
-  const joined = parts.join("").trim().split("''").join('"');
+  const joined = trimSpaces(parts.join("")).split("''").join('"');
   if (!joined.includes(",,")) return joined;
   // `,,quoted text''` - two commas standing in for a low opening quotation mark.
   const out: string[] = [];
@@ -109,10 +118,35 @@ export function modelTextProblem(raw: string, kind: "statement" | "quote" | "que
   if (kind === "statement") {
     if (length(text) > MAX_STATEMENT_LENGTH) return `is longer than ${MAX_STATEMENT_LENGTH} characters`;
     if (/&(#[0-9]+|#[xX][0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]{1,31});/.test(text)) return "contains an HTML character reference";
-    if (/\[ ?[Ss][0-9]+ ?\]/.test(text)) return "contains a citation marker; cite through the sources list instead";
+    if (hasCitationMarker(text)) return "contains a citation marker; cite through the sources list instead";
   }
   if (kind === "quote" && length(text) > MAX_QUOTE_LENGTH) return `is longer than ${MAX_QUOTE_LENGTH} characters`;
   return undefined;
+}
+
+const OPENING_BRACKETS = "[\uFF3B\u27E6\u3010\u3014";
+const CLOSING_BRACKETS = "]\uFF3D\u27E7\u3011\u3015";
+
+/**
+ * Does the text contain something shaped like one of our citation markers?
+ * Any bracketed token - `[ ]` or the look-alikes `\uFF3B \uFF3D`, `\u27E6 \u27E7`, `\u3010 \u3011`,
+ * `\u3014 \u3015` - whose content, after Unicode NFKC normalisation and with spaces removed, is
+ * `S<digits>` (or a list such as `S1,S2`) or starts with `Source`.
+ */
+export function hasCitationMarker(text: string): boolean {
+  const chars = Array.from(text);
+  for (let i = 0; i < chars.length; i++) {
+    if (!OPENING_BRACKETS.includes(chars[i] ?? " ")) continue;
+    let end = i + 1;
+    while (end < chars.length && !CLOSING_BRACKETS.includes(chars[end] ?? " ")) end++;
+    if (end >= chars.length) continue;
+    const content = Array.from(chars.slice(i + 1, end).join("").normalize("NFKC"))
+      .filter((ch) => !WHITESPACE.has(ch.codePointAt(0) ?? 0))
+      .join("")
+      .toLowerCase();
+    if (/^s[0-9]+([,;]s[0-9]+)*$/.test(content) || content.startsWith("source")) return true;
+  }
+  return false;
 }
 
 /** URLs written in a text (anything around `://` or starting `www.`), without trailing punctuation. */
@@ -151,6 +185,14 @@ function isApostrophe(chars: string[], index: number): boolean {
   return tail === "s" && (isAsciiDigit(before) || before === ")" || before === "]");
 }
 
+export interface Quotation {
+  /** The quoted words, without the marks. */
+  text: string;
+  /** Positions of the opening and closing mark, in code points of the normalised statement. */
+  open: number;
+  close: number;
+}
+
 /**
  * The quotations inside a statement. The text is normalised first, so only
  * `"` and `'` remain as quotation marks. A `'` that is part of a word, that
@@ -158,9 +200,9 @@ function isApostrophe(chars: string[], index: number): boolean {
  * precedes a digit ("the '95 Directive") is not a quotation mark.
  * Returns `undefined` when a quotation mark is left open.
  */
-export function quotationsIn(statement: string): string[] | undefined {
+export function quotationSpans(statement: string): Quotation[] | undefined {
   const chars = Array.from(normalise(statement));
-  const spans: string[] = [];
+  const spans: Quotation[] = [];
   let open: { mark: string; at: number } | undefined;
   for (let i = 0; i < chars.length; i++) {
     const ch = chars[i];
@@ -168,7 +210,7 @@ export function quotationsIn(statement: string): string[] | undefined {
     if (open && ch !== open.mark) continue; // the other mark inside a quotation is content
     if (ch === "'" && isApostrophe(chars, i)) continue;
     if (open) {
-      spans.push(chars.slice(open.at + 1, i).join("").trim());
+      spans.push({ text: trimSpaces(chars.slice(open.at + 1, i).join("")), open: open.at, close: i });
       open = undefined;
       continue;
     }
@@ -183,18 +225,33 @@ export function quotationsIn(statement: string): string[] | undefined {
   return open ? undefined : spans;
 }
 
+export function quotationsIn(statement: string): string[] | undefined {
+  return quotationSpans(statement)?.map((q) => q.text);
+}
+
+/** The normalised statement with the words of the given quotations removed (the marks stay). */
+export function maskQuotations(statement: string, quotations: Quotation[]): string {
+  const chars = Array.from(normalise(statement));
+  for (const q of quotations) for (let i = q.open + 1; i < q.close; i++) chars[i] = "";
+  return chars.join("");
+}
+
+export function hasLetter(text: string): boolean {
+  return Array.from(text).some(isLetter);
+}
+
 /** Remove punctuation and ellipses (`...`, `[...]`) from the two ends only. */
 export function trimQuotation(text: string): string {
-  let current = text.trim();
+  let current = trimSpaces(text);
   for (;;) {
     let next = current;
-    for (const ellipsis of ["[...]", "[…]", "..."]) {
+    for (const ellipsis of ["[...]", "[\u2026]", "..."]) {
       if (next.startsWith(ellipsis)) next = next.slice(ellipsis.length);
       if (next.endsWith(ellipsis)) next = next.slice(0, -ellipsis.length);
     }
-    next = next.trim();
-    while (next.length > 0 && END_PUNCTUATION.includes(next[0] ?? "")) next = next.slice(1).trim();
-    while (next.length > 0 && END_PUNCTUATION.includes(next[next.length - 1] ?? "")) next = next.slice(0, -1).trim();
+    next = trimSpaces(next);
+    while (next.length > 0 && END_PUNCTUATION.includes(next[0] ?? "")) next = trimSpaces(next.slice(1));
+    while (next.length > 0 && END_PUNCTUATION.includes(next[next.length - 1] ?? "")) next = trimSpaces(next.slice(0, -1));
     if (next === current) return current;
     current = next;
   }
@@ -256,16 +313,38 @@ export function findVerbatim(haystack: string, wanted: string): string | undefin
 }
 
 /**
- * Render text that did not come from this program as literal characters:
- * whitespace collapsed, Markdown control characters and `&` escaped, and a
- * leading list marker (`-`, `+`, `1.`, `1)`) escaped. This is the ONE function
- * through which model-written text (statements, search queries) and user
- * input reach the output.
+ * Render ANY text that did not come from this program as literal characters:
+ * control and format characters removed (a tab or line break becomes a
+ * space), whitespace collapsed, Markdown control characters and `&` escaped,
+ * and a leading list marker (`-`, `+`, `1.`, `1)`) escaped. This is the ONE
+ * function through which model-written text, user input and strings from the
+ * API or the configuration reach the output.
  */
 export function plainText(text: string): string {
-  const escaped = normalise(text).replace(/[\\`*_#>|[\]<~&]/g, "\\$&");
+  let visible = "";
+  for (const ch of text) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (WHITESPACE.has(code)) visible += " ";
+    else if (!/^[\p{Cc}\p{Cf}]$/u.test(ch)) visible += ch;
+  }
+  const escaped = normalise(visible).replace(/[\\`*_#>|[\]<~&]/g, "\\$&");
   const marker = /^([0-9]{1,9})([.)]) /.exec(escaped);
   if (marker) return `${marker[1]}\\${marker[2]}${escaped.slice(marker[0].length - 1)}`;
   if (escaped.startsWith("- ") || escaped.startsWith("+ ")) return `\\${escaped}`;
   return escaped;
+}
+
+/** `plainText` inside double quotation marks, with any `"` in the text escaped, so the end of the quoted text is unambiguous. */
+export function quotedPlainText(text: string): string {
+  return `"${plainText(text).replace(/"/g, '\\"')}"`;
+}
+
+/** A URL as printable text, or `""` unless it parses as an http(s) URL. */
+export function printableUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? plainText(url) : "";
+  } catch {
+    return "";
+  }
 }

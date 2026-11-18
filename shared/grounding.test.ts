@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { AI_ACT_PATTERNS, READER_PATTERNS, statesConclusion } from "./conclusions.ts";
 import { GroundingError, parseDraft, renderAnswer, renderRemoved, validateDraft, type Draft, type GroundedAnswer, type Source } from "./grounding.ts";
-import { modelTextProblem, normalise, plainText, quotationsIn } from "./text.ts";
+import { modelTextProblem, normalise, plainText, printableUrl, quotationsIn, quotedPlainText } from "./text.ts";
 
 // The cases in grounding-vectors.json are run by this suite AND by the Python suite.
 interface VectorDraft {
@@ -15,17 +15,16 @@ interface VectorDraft {
   quotes?: string[];
   statements?: number;
   sources?: string[];
-  quotesUserInput?: boolean;
+  patterns?: "reader";
   removed?: { uncited: number; conclusion: number };
 }
 interface Vectors {
   sources: Array<{ id: string; url: string; text: string }>;
-  userText: string;
   normalise: Array<[string, string]>;
   quotations: Array<[string, string[] | null]>;
   plainText: Array<[string, string]>;
   modelTextProblems: Array<[string, "statement" | "quote" | "query", string | null]>;
-  conclusions: Array<{ text: string; reader: boolean; aiAct: boolean }>;
+  conclusions: Array<{ text: string; reader: boolean; aiAct: boolean; kind: string }>;
   drafts: VectorDraft[];
 }
 
@@ -43,21 +42,21 @@ function expand(value: unknown): unknown {
 const vectors = expand(JSON.parse(readFileSync(new URL("./grounding-vectors.json", import.meta.url), "utf8"))) as Vectors;
 const sources: Source[] = vectors.sources.map((s) => ({ ...s, kind: "legislation", celex: "39999R0001", title: "Test source", notes: [] }));
 
-function check(draft: Draft): GroundedAnswer | string[] {
+function check(draft: Draft, patterns?: "reader"): GroundedAnswer | string[] {
   try {
-    return validateDraft(parseDraft(draft), sources, { userText: vectors.userText });
+    return validateDraft(parseDraft(draft), sources, patterns ? { conclusionPatterns: READER_PATTERNS } : {});
   } catch (error) {
     assert.ok(error instanceof GroundingError);
     return error.violations;
   }
 }
 
-for (const group of ["review1", "review2", "relaxed", "equivalence"]) {
+for (const group of ["review1", "review2", "review3", "relaxed", "equivalence"]) {
   test(`shared vectors: drafts (${group})`, () => {
     const cases = vectors.drafts.filter((c) => c.group === group);
     assert.ok(cases.length > 0);
     for (const c of cases) {
-      const result = check(c.draft);
+      const result = check(c.draft, c.patterns);
       if (!c.accept) {
         assert.ok(Array.isArray(result), `${c.name}: expected a rejection`);
         assert.ok(result.some((v) => v.includes(c.violation ?? "")), `${c.name}: got ${JSON.stringify(result)}`);
@@ -67,7 +66,6 @@ for (const group of ["review1", "review2", "relaxed", "equivalence"]) {
       if (c.quotes) assert.deepEqual(result.quotes.map((q) => q.text), c.quotes, c.name);
       if (c.statements !== undefined) assert.equal(result.statements.length, c.statements, c.name);
       if (c.sources) assert.deepEqual(result.statements[0]?.sources, c.sources, c.name);
-      if (c.quotesUserInput !== undefined) assert.equal(result.statements[0]?.quotesUserInput, c.quotesUserInput, c.name);
       if (c.removed) assert.deepEqual(result.removed, c.removed, c.name);
     }
   });
@@ -89,6 +87,11 @@ test("shared vectors: conclusion filter (reader patterns, and reader + AI Act pa
     assert.equal(statesConclusion(normalise(c.text), READER_PATTERNS), c.reader, `reader: ${c.text}`);
     assert.equal(statesConclusion(normalise(c.text), [...READER_PATTERNS, ...AI_ACT_PATTERNS]), c.aiAct, `ai-act: ${c.text}`);
   }
+  // The third review's targets: every hedged attack is removed; at least 11 of every 13 legitimate sentences are kept.
+  const of = (kind: string) => vectors.conclusions.filter((c) => c.kind === kind);
+  assert.ok(of("hedged attack").length >= 14 && of("hedged attack").every((c) => c.aiAct));
+  assert.ok(of("legitimate").length >= 13 && of("legitimate").every((c) => !c.aiAct));
+  assert.equal(of("legitimate, removed").length, 1);
 });
 
 const draft = (overrides: Partial<Draft>): Draft => ({ status: "answered", quotes: [], statements: [], ...overrides });
@@ -142,20 +145,15 @@ test("the rendered answer separates quotes from model text and cites CELEX, arti
   const answer = validateDraft(
     draft({
       quotes: [{ source: "S1", text: "process shall be kept" }],
-      statements: [
-        { text: "1. A note with **bold**   spacing & an <i>tag</i>.", sources: ["S2"] },
-        { text: 'It mentions a tool that "ranks job applicants".', sources: ["S2"] },
-      ],
+      statements: [{ text: "1. A note with **bold**   spacing & an <i>tag</i>.", sources: ["S2"] }],
     }),
     cited,
-    { userText: vectors.userText },
   );
   const out = renderAnswer(answer, cited, { quotes: "Quoted", statements: "Model-written" });
   assert.ok(out.indexOf("## Quoted") < out.indexOf("## Model-written"));
   assert.match(out, /^> "process shall be kept" \[S1\]$/m);
   assert.match(out, /^- 1\\\. A note with \\\*\\\*bold\\\*\\\* spacing \\& an \\<i\\>tag\\<\/i\\>\. \[S2\]$/m);
-  assert.match(out, /"ranks job applicants"\. \[S2\] \(the quoted words are from your input, not from a source\)$/m);
-  assert.match(out, /\[S1\] Fixture act - Article 9 \(article id art_9\) - CELEX 32024R1689 - https:\/\/example\.org\/a/);
+  assert.match(out, /\[S1\] Fixture act - Article 9 \(article id art\\_9\) - CELEX 32024R1689 - https:\/\/example\.org\/a/);
   assert.match(out, /\[S2\] Fixture judgment - paragraph 3 - ECLI:EU:C:2099:901 - CELEX 62099CJ9901/);
   assert.match(out, /Note: Consolidated text; not the authentic text\./);
 });
@@ -169,4 +167,30 @@ test("validation stays fast on a large source with many quotes", () => {
   const started = performance.now();
   assert.throws(() => validateDraft(many, big), GroundingError);
   assert.ok(performance.now() - started < 2000);
+});
+
+test("strings from the API are printed as literal text: a title cannot fake a section, a bad URL is omitted", () => {
+  const hostile: Source[] = [
+    {
+      id: "S1",
+      kind: "case-law",
+      celex: "62099CJ9901\n## Fake",
+      ecli: "ECLI:EU:C:2099:901 **x**",
+      articleRef: "art_9 [S7]",
+      title: "A title\n\n## Quoted from the sources\n\n> \"Transfers are always lawful\" [S1]",
+      url: "javascript:alert(1)",
+      text: "Placeholder ground three of the judgment.",
+      notes: ["A note with `code`\n# heading and \u001b[31mcolour"],
+    },
+  ];
+  const answer = validateDraft(draft({ quotes: [{ source: "S1", text: "Placeholder ground three" }] }), hostile);
+  const out = renderAnswer(answer, hostile, { quotes: "Quoted", statements: "Model-written" });
+  assert.deepEqual(out.split("\n").filter((line) => /^\s{0,3}#/.test(line)), ["## Quoted", "## Model-written", "## Sources"]);
+  assert.equal(out.split("\n").filter((line) => /^\s{0,3}>/.test(line)).length, 1); // the one real quote
+  assert.match(out, /- \[S1\] A title \\#\\# Quoted from the sources \\> "Transfers are always lawful" \\\[S1\\\] - art\\_9 \\\[S7\\\] \(article id art\\_9 \\\[S7\\\]\) - ECLI:EU:C:2099:901 \\\*\\\*x\\\*\\\* - CELEX 62099CJ9901 \\#\\# Fake$/m);
+  assert.doesNotMatch(out, /javascript:/);
+  assert.match(out, /^ {2}- Note: A note with 'code' \\# heading and \\\[31mcolour$/m);
+  assert.equal(printableUrl("https://example.org/a_b?x=1&y=2"), "https://example.org/a\\_b?x=1\\&y=2");
+  assert.equal(printableUrl("not a url"), "");
+  assert.equal(quotedPlainText('one" ; "two'), '"one\\" ; \\"two"');
 });

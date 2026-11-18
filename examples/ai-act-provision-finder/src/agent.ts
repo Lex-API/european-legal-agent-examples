@@ -15,7 +15,7 @@
 import {
   DRAFT_SCHEMA,
   GroundingError,
-  citation,
+  sourceListItem,
   parseDraft,
   renderAnswer,
   sourcesForPrompt,
@@ -26,7 +26,7 @@ import {
 import { CreditTally } from "../../../shared/env.ts";
 import { AI_ACT_PATTERNS, READER_PATTERNS } from "../../../shared/conclusions.ts";
 import type { Llm } from "../../../shared/llm.ts";
-import { length, modelTextProblem, plainText } from "../../../shared/text.ts";
+import { length, modelTextProblem, plainText, quotedPlainText, trimSpaces } from "../../../shared/text.ts";
 import { toSources, type LegislationHit, type LegislationSearch } from "./retrieve.ts";
 
 export interface FinderOptions {
@@ -101,7 +101,7 @@ export async function findProvisions(
   const queries = (Array.isArray(plan.queries) ? plan.queries : [])
     .filter((q): q is string => typeof q === "string")
     .filter((q) => modelTextProblem(q, "query") === undefined)
-    .map((q) => q.trim())
+    .map((q) => trimSpaces(q))
     .filter((q) => length(q) >= 3 && length(q) <= 1000) // the API's limits on `query`
     .slice(0, maxQueries);
   if (queries.length === 0) queries.push(description.trim().slice(0, 1000));
@@ -125,13 +125,13 @@ export async function findProvisions(
   }
 
   // 3 + 4. Draft, then check (one retry with the violations fed back) -------
-  const baseUser = `AI system description:\n${description}\n\nRetrieved provisions:\n\n${sourcesForPrompt(sources)}\n\nSelect the excerpts most worth reading for this system and add a short note for each. Copy excerpts exactly, whole words, one line each. Write each note as one line of plain text (no Markdown, no URLs) and give it the source ids it relies on. Put quotation marks only around words copied exactly from a source or from the description. If none of the provisions is relevant, set status to no_support.`;
+  const baseUser = `AI system description:\n${description}\n\nRetrieved provisions:\n\n${sourcesForPrompt(sources)}\n\nSelect the excerpts most worth reading for this system and add a short note for each. Copy excerpts exactly, whole words, one line each. Write each note as one line of plain text (no Markdown, no URLs) and give it the source ids it relies on. Put quotation marks only around words copied exactly from a source you cite for that note; refer to the description in your own words, without quotation marks. If none of the provisions is relevant, set status to no_support.`;
   let answer: GroundedAnswer | undefined;
   let feedback = "";
   for (let attempt = 0; attempt < 2 && !answer; attempt++) {
     const raw = await deps.llm.generate({ system: SYSTEM, user: baseUser + feedback, tool: DRAFT_TOOL });
     try {
-      answer = validateDraft(parseDraft(raw), sources, { conclusionPatterns: CONCLUSION_PATTERNS, userText: description });
+      answer = validateDraft(parseDraft(raw), sources, { conclusionPatterns: CONCLUSION_PATTERNS });
     } catch (error) {
       if (!(error instanceof GroundingError)) throw error;
       feedback = `\n\nYour previous draft was rejected:\n- ${error.violations.join("\n- ")}\nFix these and submit again.`;
@@ -140,7 +140,7 @@ export async function findProvisions(
 
   // 5. Render -------------------------------------------------------------
   if (!answer) {
-    const list = sources.map((s) => `- [${s.id}] ${citation(s)}${s.notes.map((n) => `\n  - Note: ${n}`).join("")}`).join("\n");
+    const list = sources.map(sourceListItem).join("\n");
     const markdown = `${header}\n## Retrieved provisions (no model text)\n\nThe model's draft failed the grounding check twice, so none of it is shown. These are the provisions the search returned:\n\n${list}\n\n${HUMAN_DECIDES}\n`;
     return { outcome: "sources_only", markdown, queries, sources, credits };
   }
@@ -168,8 +168,8 @@ function renderHeader(
     "",
     `**System described:** ${plainText(description)}`,
     "",
-    `Searches run (${deps.search.label}): ${queries.map((q) => `"${plainText(q)}"`).join("; ")}`,
-    `Hits: ${hitCount} in total, ${otherActs} from other acts (not shown). Model: ${deps.llm.label}.`,
+    `Searches run (${plainText(deps.search.label)}): ${queries.map(quotedPlainText).join("; ")}`,
+    `Hits: ${hitCount} in total, ${otherActs} from other acts (not shown). Model: ${plainText(deps.llm.label)}.`,
     "",
   ].join("\n");
 }

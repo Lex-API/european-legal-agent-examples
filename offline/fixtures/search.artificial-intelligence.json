@@ -6,7 +6,7 @@
   "resultCount": 2,
   "results": [
     {
-      "title": "Communication from the Commission on placeholder guidelines for artificial intelligence [fixture title]",
+      "title": "Communication from the Commission on placeholder guidelines for artificial intelligence (fixture title)",
       "celexNumber": "52099DC0001",
       "celex": "52099DC0001",
       "documentType": "Communication",
@@ -18,7 +18,7 @@
       "url": "https://eur-lex.europa.eu/legal-content/EN/ALL/?uri=CELEX:52099DC0001"
     },
     {
-      "title": "A listing without a parseable CELEX [fixture title]",
+      "title": "A listing without a parseable CELEX (fixture title)",
       "celexNumber": "",
       "celex": null,
       "documentType": null,
