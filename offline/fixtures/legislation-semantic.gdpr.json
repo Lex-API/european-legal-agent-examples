@@ -1,0 +1,62 @@
+{
+  "success": true,
+  "searchType": "semantic-legislation",
+  "query": "fixture",
+  "resultCount": 3,
+  "results": [
+    {
+      "id": "fx-gdpr-0001",
+      "law_id": "02016R0679-20990101",
+      "law_title": "Regulation (EU) 2016/679 (General Data Protection Regulation), consolidated (fixture title)",
+      "article_ref": "art_46",
+      "language": "en",
+      "score": 0.803,
+      "exact_match_law_id": false,
+      "consolidated": true,
+      "consolidatedAsOf": "2099-01-01",
+      "baseCelex": "32016R0679",
+      "consolidatedNote": "The act as amended, consolidated as of 2099-01-01; not the authentic text. Only the Official Journal text is authentic.",
+      "baseAct": {
+        "law_id": "32016R0679",
+        "article_ref": "art_46",
+        "score": 0.797
+      },
+      "text": "[SYNTHETIC FIXTURE - not the text of the act] Placeholder provision E1: fixture wording about sending fixture data abroad when placeholder safeguards exist. Placeholder provision E2: fixture wording about remedies being available."
+    },
+    {
+      "id": "fx-gdpr-0002",
+      "law_id": "32016R0679",
+      "law_title": "Regulation (EU) 2016/679 (General Data Protection Regulation) (fixture title)",
+      "article_ref": "art_45",
+      "language": "en",
+      "score": 0.781,
+      "exact_match_law_id": false,
+      "text": "[SYNTHETIC FIXTURE - not the text of the act] Placeholder provision F1: fixture wording about sending fixture data abroad after a placeholder adequacy finding. Placeholder provision F2: fixture wording saying no separate permission is needed in that case."
+    },
+    {
+      "id": "fx-other-0003",
+      "law_id": "32018R1725",
+      "law_title": "Regulation (EU) 2018/1725 (fixture title)",
+      "article_ref": "art_48",
+      "language": "en",
+      "score": 0.722,
+      "exact_match_law_id": false,
+      "text": "[SYNTHETIC FIXTURE - not the text of the act] Placeholder provision G1: fixture wording about transfers by fixture institutions."
+    }
+  ],
+  "metadata": {},
+  "tookMs": 388,
+  "subscription": {
+    "tier": "FREE",
+    "maxResults": 10
+  },
+  "credits": {
+    "operation_weight": 5,
+    "current": 5,
+    "limit": 500,
+    "remaining": 495,
+    "included": 500,
+    "topup": 0,
+    "resetsAt": "2026-12-01T00:00:00.000Z"
+  }
+}

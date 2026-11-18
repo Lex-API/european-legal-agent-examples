@@ -1,0 +1,61 @@
+{
+  "success": true,
+  "document": {
+    "celex": "62099CJ9901",
+    "language": "en",
+    "title": "Judgment of the Court of 1 January 2099 (fixture title)",
+    "documentType": "Judgment",
+    "documentTypeCode": "judgment",
+    "author": "Court of Justice",
+    "dateOfDocument": "01/01/2099",
+    "dateOfDocumentISO": "2099-01-01",
+    "ecli": "ECLI:EU:C:2099:901",
+    "caseNumber": "C-9901/99",
+    "keywords": [],
+    "content": {
+      "recitals": [],
+      "paragraphs": [
+        {
+          "number": 1,
+          "text": "[SYNTHETIC FIXTURE - not the text of a judgment] Placeholder ground 1: fixture wording introducing the placeholder request."
+        },
+        {
+          "number": 2,
+          "text": "[SYNTHETIC FIXTURE - not the text of a judgment] Placeholder ground 2: fixture wording about the level of protection needed for a transfer to a third country."
+        },
+        {
+          "number": 3,
+          "text": "[SYNTHETIC FIXTURE - not the text of a judgment] Placeholder ground 3: fixture wording saying the placeholder safeguards must give people a level of protection comparable to the placeholder standard."
+        },
+        {
+          "number": 4,
+          "text": "[SYNTHETIC FIXTURE - not the text of a judgment] Placeholder ground 4: fixture wording about weighing the fixture contract terms and the legal system of the third country."
+        },
+        {
+          "number": 5,
+          "text": "[SYNTHETIC FIXTURE - not the text of a judgment] Placeholder ground 5: fixture wording about costs."
+        }
+      ]
+    },
+    "textAvailability": {
+      "available": true
+    },
+    "urls": {
+      "metadata": "https://eur-lex.europa.eu/legal-content/EN/ALL/?uri=CELEX:62099CJ9901",
+      "html": "https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:62099CJ9901"
+    },
+    "fetchedAt": "2026-11-01T08:00:00.000Z"
+  },
+  "subscription": {
+    "tier": "FREE"
+  },
+  "credits": {
+    "operation_weight": 5,
+    "current": 15,
+    "limit": 500,
+    "remaining": 485,
+    "included": 500,
+    "topup": 0,
+    "resetsAt": "2026-12-01T00:00:00.000Z"
+  }
+}

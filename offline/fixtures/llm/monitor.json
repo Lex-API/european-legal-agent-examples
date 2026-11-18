@@ -1,0 +1,12 @@
+{
+  "submit_digest": {
+    "status": "answered",
+    "quotes": [],
+    "statements": [
+      { "text": "Two acts are newly recorded against the GDPR: a corrigendum and an amending regulation.", "sources": ["S1", "S2"] },
+      { "text": "Two regulations were picked up under the \"New regulations\" topic.", "sources": ["S3", "S4"] },
+      { "text": "One Commission communication has artificial intelligence in its title.", "sources": ["S5"] },
+      { "text": "More changes are expected next month.", "sources": [] }
+    ]
+  }
+}

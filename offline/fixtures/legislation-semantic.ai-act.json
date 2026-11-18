@@ -1,0 +1,81 @@
+{
+  "success": true,
+  "searchType": "semantic-legislation",
+  "query": "fixture",
+  "resultCount": 4,
+  "results": [
+    {
+      "id": "fx-aiact-0001",
+      "law_id": "32024R1689",
+      "law_title": "Regulation (EU) 2024/1689 (Artificial Intelligence Act) (fixture title)",
+      "article_ref": "art_6",
+      "language": "en",
+      "score": 0.812,
+      "exact_match_law_id": false,
+      "chapter": "CHAPTER III [fixture]",
+      "text": "[SYNTHETIC FIXTURE - not the text of the act] Placeholder provision A1: fixture wording about how an example system is sorted into a placeholder category. Placeholder provision A2: fixture wording about writing down that sorting before the example system is offered."
+    },
+    {
+      "id": "fx-aiact-0002",
+      "law_id": "32024R1689",
+      "law_title": "Regulation (EU) 2024/1689 (Artificial Intelligence Act) (fixture title)",
+      "article_ref": "art_9",
+      "language": "en",
+      "score": 0.774,
+      "exact_match_law_id": false,
+      "chapter": "CHAPTER III [fixture]",
+      "text": "[SYNTHETIC FIXTURE - not the text of the act] Placeholder provision B1: fixture wording about keeping a placeholder risk process running for the example system. Placeholder provision B2: fixture wording saying the process repeats over the lifetime of the example system."
+    },
+    {
+      "id": "fx-aiact-0003",
+      "law_id": "02024R1689-20990101",
+      "law_title": "Regulation (EU) 2024/1689 (Artificial Intelligence Act), consolidated (fixture title)",
+      "article_ref": "art_50",
+      "language": "en",
+      "score": 0.741,
+      "exact_match_law_id": false,
+      "consolidated": true,
+      "consolidatedAsOf": "2099-01-01",
+      "baseCelex": "32024R1689",
+      "consolidatedNote": "The act as amended, consolidated as of 2099-01-01; not the authentic text. Only the Official Journal text is authentic.",
+      "baseAct": {
+        "law_id": "32024R1689",
+        "article_ref": "art_50",
+        "score": 0.733
+      },
+      "text": "[SYNTHETIC FIXTURE - not the text of the act] Placeholder provision C1: fixture wording about telling people that they are dealing with an example system."
+    },
+    {
+      "id": "fx-other-0004",
+      "law_id": "32016R0679",
+      "law_title": "Regulation (EU) 2016/679 (General Data Protection Regulation) (fixture title)",
+      "article_ref": "art_22",
+      "language": "en",
+      "score": 0.705,
+      "exact_match_law_id": false,
+      "text": "[SYNTHETIC FIXTURE - not the text of the act] Placeholder provision D1: fixture wording about automated decisions."
+    }
+  ],
+  "metadata": {},
+  "tookMs": 412,
+  "subscription": {
+    "tier": "FREE",
+    "maxResults": 10
+  },
+  "usage": {
+    "current": 5,
+    "limit": 500,
+    "remaining": 495,
+    "unit": "credits",
+    "resetsAt": "2026-12-01T00:00:00.000Z"
+  },
+  "credits": {
+    "operation_weight": 5,
+    "current": 5,
+    "limit": 500,
+    "remaining": 495,
+    "included": 500,
+    "topup": 0,
+    "resetsAt": "2026-12-01T00:00:00.000Z"
+  }
+}
