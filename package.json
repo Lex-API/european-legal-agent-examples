@@ -15,7 +15,7 @@
     "monitor:webhook-server": "tsx examples/regulatory-change-monitor/src/webhook-server.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test \"examples/**/*.test.ts\" \"shared/**/*.test.ts\" \"testing/**/*.test.ts\""
+    "test": "node --import tsx --test shared/grounding.test.ts shared/llm.test.ts offline/guard.test.ts examples/ai-act-obligations-finder/test/agent.test.ts examples/regulatory-change-monitor/test/monitor.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.10.0",
