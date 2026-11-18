@@ -52,7 +52,8 @@ class Result:
     outcome: Literal["answered", "no_supporting_text", "sources_only"]
     markdown: str
     sources: list[Source]
-    credits_reported: int
+    #: Credits the API reported for this run, as text ("20", "not reported", ...).
+    credits: str
     answer: GroundedAnswer | None = None
 
 
@@ -73,12 +74,13 @@ def answer_question(question: str, *, client: LexAPI, llm: Llm, as_of: str | Non
             "## No supporting text found\n\nThe searches returned no GDPR article and no judgment paragraph "
             "for this question, so there is nothing to quote and no answer is given.\n\n"
         )
-        return Result("no_supporting_text", header + body + _notices(found.notices), sources, found.credits_reported)
+        return Result("no_supporting_text", header + body + _notices(found.notices), sources, found.describe_credits())
 
     # 2 + 3. Draft, then check (one retry with the violations fed back) --------
     user = (
         f"Question: {question}\n\nSources:\n\n{sources_for_prompt(sources)}\n\n"
-        "Answer from these sources only. Copy quotes exactly and give every sentence its source ids."
+        "Answer from these sources only. Copy quotes exactly, one line each. Write each sentence as one line "
+        "of plain text and give it its source ids."
     )
     answer: GroundedAnswer | None = None
     feedback = ""
@@ -106,15 +108,15 @@ def answer_question(question: str, *, client: LexAPI, llm: Llm, as_of: str | Non
             "## Retrieved sources (no model text)\n\nThe model's draft failed the grounding check twice, so none "
             f"of it is shown. These are the sources the searches returned:\n\n{listing}\n\n"
         )
-        return Result("sources_only", header + body + _notices(found.notices), sources, found.credits_reported)
+        return Result("sources_only", header + body + _notices(found.notices), sources, found.describe_credits())
     if answer.status == "no_support":
         body = (
             f"## No supporting text found\n\nThe searches returned {len(sources)} source(s), but the model found "
             "nothing in them that answers the question. Nothing is quoted and no answer is given.\n\n"
         )
         return Result(
-            "no_supporting_text", header + body + _notices(found.notices), sources, found.credits_reported, answer
+            "no_supporting_text", header + body + _notices(found.notices), sources, found.describe_credits(), answer
         )
 
     markdown = header + render_answer(answer, sources) + "\n" + _notices(found.notices) + NOT_ADVICE + "\n"
-    return Result("answered", markdown, sources, found.credits_reported, answer)
+    return Result("answered", markdown, sources, found.describe_credits(), answer)

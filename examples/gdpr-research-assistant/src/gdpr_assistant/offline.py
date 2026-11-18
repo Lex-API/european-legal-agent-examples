@@ -27,6 +27,12 @@ DRY_RUN_BANNER = (
 
 
 def read_fixture(name: str) -> str:
+    if not FIXTURES_DIR.is_dir():
+        # The fixtures live in the repository, not in the installed package.
+        raise RuntimeError(
+            f"Offline fixtures not found at {FIXTURES_DIR}. --dry-run and the tests need a checkout of the "
+            'repository with an editable install: pip install -e ".[anthropic]"'
+        )
     return (FIXTURES_DIR / name).read_text(encoding="utf-8")
 
 

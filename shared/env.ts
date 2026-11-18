@@ -22,7 +22,30 @@ export function createLexApiClient(env: NodeJS.ProcessEnv = process.env): LexAPI
   });
 }
 
-/** Credits a response reports for its own call (`credits.operation_weight`); 0 when absent. */
-export function creditsCharged(response: { credits?: { operation_weight?: number } }): number {
-  return response.credits?.operation_weight ?? 0;
+/** Credits a response reports for its own call (`credits.operation_weight`); `undefined` when it reports none. */
+export function creditsCharged(response: { credits?: { operation_weight?: number } }): number | undefined {
+  return response.credits?.operation_weight;
+}
+
+/** Adds up reported credits without turning "not reported" into 0. */
+export class CreditTally {
+  private reported = 0;
+  private calls = 0;
+  private silent = 0;
+
+  add(credits: number | undefined): void {
+    this.calls++;
+    if (credits === undefined) this.silent++;
+    else this.reported += credits;
+  }
+
+  /** The sum of what was reported, or `undefined` when no call reported anything. */
+  get total(): number | undefined {
+    return this.calls > 0 && this.silent === this.calls ? undefined : this.reported;
+  }
+
+  describe(): string {
+    if (this.total === undefined) return "not reported";
+    return this.silent > 0 ? `${this.reported} (${this.silent} call(s) did not report credits)` : String(this.reported);
+  }
 }

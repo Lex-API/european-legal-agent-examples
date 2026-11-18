@@ -44,10 +44,21 @@ Polling does not detect new consolidated versions; webhook watch lists do.
 ## The digest and its grounding
 
 `src/digest.ts` prints the list of documents in code, straight from the API records, each with
-its CELEX number and EUR-Lex link. The model only adds a short summary on top. The same check as
-in the other examples (`shared/grounding.ts`) applies: a summary citing a document that is not in
-the list is rejected (one retry, then the list is shown without a summary), and sentences without
-a source are removed and listed. When nothing is new, the digest says so and the model is not called.
+its CELEX number and EUR-Lex link. The model only adds a short summary on top: statements with
+source ids, nothing else. The same check as in the other examples (`shared/grounding.ts`) applies
+to them:
+
+- a statement citing a document that is not in the list is rejected;
+- a quotation inside a statement (two words or more, or eight characters or more, in any style of
+  quotation marks) must be verbatim in a record that statement cites, and quotation marks must
+  be balanced;
+- a statement must be one line of plain text (no line break, no leading heading, blockquote,
+  list, table or code-fence marker);
+- statements without a source are removed and listed.
+
+A rejected summary is retried once; after that the list is shown without a summary. Markdown in
+the summary is escaped when it is printed. When nothing is new, the digest says so and the model
+is not called.
 
 The check cannot tell whether a sentence describes its cited records correctly.
 
@@ -60,7 +71,7 @@ version. Webhooks are not available on the FREE plan, and the receiver needs a p
 
 ```bash
 LEXAPI_WEBHOOK_URL=https://your-host.example/webhooks/lexapi npm run monitor:webhook-setup
-LEXAPI_WEBHOOK_SECRET=... npm run monitor:webhook-server   # listens on PORT (default 8787)
+LEXAPI_WEBHOOK_SECRET=... npm run monitor:webhook-server   # listens on 127.0.0.1:8787
 ```
 
 - `src/webhook-setup.ts` creates one webhook (`webhooks.create`: the acts as `watchCelex`, the
@@ -72,7 +83,10 @@ LEXAPI_WEBHOOK_SECRET=... npm run monitor:webhook-server   # listens on PORT (de
   polling produces. A `consolidated_version` item is labelled as a documentation tool without
   legal force.
 - `src/webhook-server.ts` is a plain `node:http` receiver: it answers 200 or 401 first and builds
-  the digest afterwards, because a model call can outlast the 10-second delivery timeout.
+  the digest afterwards, because a model call can outlast the 10-second delivery timeout. It
+  listens on `127.0.0.1` by default (`HOST` and `PORT` change that). Expose it only through a
+  reverse proxy or a tunnel that terminates HTTPS; do not bind it to a public interface directly.
+  Bodies over 5 MB are answered with 413, and the last 10,000 delivery ids are remembered.
 
 Webhook mode is tested offline only, with a signed fixture delivery. It has not been run against
 real deliveries.
@@ -89,10 +103,11 @@ separately by your model provider.
 ## Tests
 
 `npm test` runs `test/monitor.test.ts` offline: baseline on first poll, only-new on later polls,
-stale-relation notices, the cited digest, the nothing-new path, rejection of an ungrounded summary,
-signature verification (valid, tampered, wrong secret, missing, re-serialised body, stale
-timestamp, empty secret), duplicate deliveries, the HTTP receiver on 127.0.0.1, and webhook setup
-against the stub. Not covered by any test: the live API, real deliveries and a real model.
+stale-relation notices, the cited digest, the nothing-new path, rejection of an ungrounded summary
+and of a summary shaped like Markdown, "not reported" credits, signature verification (valid,
+tampered, wrong secret, missing, re-serialised body, stale timestamp, empty secret), duplicate
+deliveries and the bound on remembered ids, the HTTP receiver on 127.0.0.1 (200, 401, 405, 413),
+and webhook setup against the stub. Not covered by any test: the live API, real deliveries and a real model.
 
 ## Sample output (illustrative)
 
@@ -109,7 +124,7 @@ Generated 2026-11-18T08:00:00.000Z from polling. Model: scripted (no model was c
 
 ## Documents (records returned by LexAPI)
 
-- [S1] Corrigendum to Regulation (EU) 2016/679 [fixture title] - CELEX 32016R0679R(02) - https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32016R0679R(02)
+- [S1] Corrigendum to Regulation (EU) 2016/679 [fixture title] - CELEX 32099R0003 - https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32099R0003
   - Listed because: corrigendum of GDPR (32016R0679)
 - [S2] Regulation (EU) 2099/1 amending Regulation (EU) 2016/679 [fixture title] - CELEX 32099R0001 - https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32099R0001
   - Listed because: amendment of GDPR (32016R0679)

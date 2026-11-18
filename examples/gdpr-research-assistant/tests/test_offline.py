@@ -38,7 +38,7 @@ def test_a_client_left_on_the_default_base_url_is_blocked() -> None:
 
 def test_stub_answers_404_for_unknown_routes(client: LexAPI) -> None:
     with pytest.raises(LexAPIError, match="no fixture"):
-        client.resolve("ECLI:EU:C:2020:559")
+        client.resolve("ECLI:EU:C:2099:901")
 
 
 class FakeAnthropic:

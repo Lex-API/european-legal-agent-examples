@@ -2,11 +2,24 @@
   "submit_answer": {
     "status": "answered",
     "quotes": [
-      { "source": "S1", "text": "a controller may transfer personal data to a third country only if the controller has provided appropriate placeholder safeguards" }
+      {
+        "source": "S1",
+        "text": "fixture wording about sending fixture data abroad when placeholder safeguards exist"
+      }
     ],
     "statements": [
-      { "text": "For the date asked, the article on appropriate safeguards is the one whose version LexAPI established.", "sources": ["S1"] },
-      { "text": "The article on adequacy decisions was also retrieved, but its version for that date is not established, so it is not relied on here.", "sources": ["S2"] }
+      {
+        "text": "For the date asked, the article on safeguards is the one whose version LexAPI established.",
+        "sources": [
+          "S1"
+        ]
+      },
+      {
+        "text": "The article on adequacy findings was also retrieved, but its version for that date is not established, so it is not relied on here.",
+        "sources": [
+          "S2"
+        ]
+      }
     ]
   }
 }

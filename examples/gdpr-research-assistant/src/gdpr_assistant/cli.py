@@ -71,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         print(DRY_RUN_BANNER)
     print(result.markdown)
-    print(f"LexAPI credits reported for this run: {result.credits_reported}.", file=sys.stderr)
+    print(f"LexAPI credits reported for this run: {result.credits}.", file=sys.stderr)
     return 0
 
 

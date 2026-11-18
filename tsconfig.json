@@ -14,5 +14,5 @@
     "skipLibCheck": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["shared", "offline", "examples/ai-act-obligations-finder", "examples/regulatory-change-monitor"]
+  "include": ["shared", "offline", "scripts", "examples/ai-act-provision-finder", "examples/regulatory-change-monitor"]
 }

@@ -1,11 +1,13 @@
 /**
- * AI Act obligations finder - the agent loop.
+ * AI Act provision finder - the agent loop.
  *
  *   1. plan      the model turns the system description into search queries
  *   2. retrieve  LexAPI semantic search; keep AI Act articles only
  *   3. draft     the model picks excerpts and writes notes, citing source ids
  *   4. check     the grounding validator (one retry, then sources only)
  *   5. render    quoted text and model text in separate sections, with citations
+ *
+ * It finds provisions to read. It does not find the obligations that apply.
  *
  * The loop is a fixed pipeline on purpose: the number of API calls - and so
  * the credit cost of a run - is bounded by `maxQueries`.
@@ -21,6 +23,7 @@ import {
   type GroundedAnswer,
   type Source,
 } from "../../../shared/grounding.ts";
+import { CreditTally } from "../../../shared/env.ts";
 import type { Llm } from "../../../shared/llm.ts";
 import { toSources, type LegislationHit, type LegislationSearch } from "./retrieve.ts";
 
@@ -37,8 +40,8 @@ export interface FinderResult {
   queries: string[];
   sources: Source[];
   answer?: GroundedAnswer;
-  /** Sum of the credits the API reported; `undefined` if the route did not report them. */
-  creditsReported: number | undefined;
+  /** Credits the API reported for this run, as text ("15", "not reported", ...). */
+  credits: string;
 }
 
 const PLAN_TOOL = {
@@ -70,12 +73,30 @@ You do not classify the system, you do not say which obligations apply, and you 
 
 You only know the provisions given to you as sources. Do not rely on anything else you may remember about the regulation.`;
 
-/** Wording that states a legal conclusion. A blunt filter: it catches common phrasings, not every one. */
+const RISK_CLASS = String.raw`(high[- ]risk|prohibited|limited[- ]risk|minimal[- ]risk|low[- ]risk)`;
+const SUBJECT = String.raw`(system|systems|tool|tools|product|provider|providers|deployer|deployers|company|operator|operators)`;
+const DUTY = String.raw`(must|shall|should|has to|have to|needs? to|(is|are) (required|obliged|obligated) to)`;
+
+/**
+ * Wording that states a legal conclusion: a classification ("is high-risk",
+ * "is not high risk", "is classified as ...", "falls under Annex III"), a
+ * duty ("you must", "the provider has to", "must comply", "is mandatory",
+ * "are obliged to") or applicability ("applies to your system").
+ *
+ * A blunt lexical filter for English output: it catches common phrasings,
+ * not every one, and nothing in other languages.
+ */
 export const CONCLUSION_PATTERNS: RegExp[] = [
-  /\b(is|are|will be|would be|qualif(?:y|ies) as|counts? as|falls? under)\s+(a\s+|an\s+)?(high-risk|prohibited|limited-risk|minimal-risk)\b/i,
-  /\b(is|are)\s+(not\s+)?(compliant|non-compliant|in compliance|exempt)\b/i,
-  /\byou\s+(must|shall|are required to|are obliged to|need to)\b/i,
-  /\b(the|this|your)\s+(system|provider|deployer|company)\s+(must|shall|is required to|is obliged to)\b/i,
+  new RegExp(String.raw`\b(is|are|was|will be|would be)\s+(not\s+)?(an?\s+)?((classified|considered|regarded|deemed|treated)\s+(as\s+)?)?(an?\s+)?${RISK_CLASS}\b`, "i"),
+  new RegExp(String.raw`\b(qualif(y|ies)|counts?|classif(y|ies)|classified)\s+as\s+(an?\s+)?${RISK_CLASS}\b`, "i"),
+  /\bfalls?\s+(under|within)\s+(annex|article|the\s+(scope|category|definition))\b/i,
+  /\b(is|are)\s+(not\s+)?(compliant|non-compliant|in compliance|exempt|subject to)\b/i,
+  /\b(is|are)\s+(mandatory|obligatory|compulsory)\b/i,
+  /\b(is|are)\s+(obliged|obligated|required)\s+to\b/i,
+  new RegExp(String.raw`\b${DUTY}\s+comply\b`, "i"),
+  new RegExp(String.raw`\byou\s+${DUTY}\b`, "i"),
+  new RegExp(String.raw`\b${SUBJECT}\s+${DUTY}\b`, "i"),
+  /\bappl(y|ies)\s+to\s+(your|the|this)\s+(system|tool|product|company)\b/i,
 ];
 
 const HUMAN_DECIDES = `## What a human must decide
@@ -105,23 +126,24 @@ export async function findProvisions(
 
   // 2. Retrieve -----------------------------------------------------------
   const hits: LegislationHit[] = [];
-  let creditsReported: number | undefined = 0;
+  const tally = new CreditTally();
   for (const query of queries) {
     const outcome = await deps.search.search(query);
     hits.push(...outcome.hits);
-    creditsReported = outcome.credits === undefined || creditsReported === undefined ? undefined : creditsReported + outcome.credits;
+    tally.add(outcome.credits);
   }
+  const credits = tally.describe();
   const { sources, otherActs } = toSources(hits, maxSources);
   const header = renderHeader(description, queries, deps, hits.length, otherActs);
 
   if (sources.length === 0) {
     // The "no supporting text found" path: say so, and do not ask the model to fill the gap.
     const markdown = `${header}\n## No supporting text found\n\nThe searches returned no AI Act article for this description, so there is nothing to quote. This says nothing about whether the regulation is relevant to the system: try a more specific description, or search the regulation directly.\n`;
-    return { outcome: "no_supporting_text", markdown, queries, sources, creditsReported };
+    return { outcome: "no_supporting_text", markdown, queries, sources, credits };
   }
 
   // 3 + 4. Draft, then check (one retry with the violations fed back) -------
-  const baseUser = `AI system description:\n${description}\n\nRetrieved provisions:\n\n${sourcesForPrompt(sources)}\n\nSelect the excerpts most worth reading for this system and add a short note for each. Copy excerpts exactly. Give every note the source ids it relies on. If none of the provisions is relevant, set status to no_support.`;
+  const baseUser = `AI system description:\n${description}\n\nRetrieved provisions:\n\n${sourcesForPrompt(sources)}\n\nSelect the excerpts most worth reading for this system and add a short note for each. Copy excerpts exactly, one line each. Write each note as one line of plain text and give it the source ids it relies on. If none of the provisions is relevant, set status to no_support.`;
   let answer: GroundedAnswer | undefined;
   let feedback = "";
   for (let attempt = 0; attempt < 2 && !answer; attempt++) {
@@ -138,18 +160,18 @@ export async function findProvisions(
   if (!answer) {
     const list = sources.map((s) => `- [${s.id}] ${citation(s)}${s.notes.map((n) => `\n  - Note: ${n}`).join("")}`).join("\n");
     const markdown = `${header}\n## Retrieved provisions (no model text)\n\nThe model's draft failed the grounding check twice, so none of it is shown. These are the provisions the search returned:\n\n${list}\n\n${HUMAN_DECIDES}\n`;
-    return { outcome: "sources_only", markdown, queries, sources, creditsReported };
+    return { outcome: "sources_only", markdown, queries, sources, credits };
   }
   if (answer.status === "no_support") {
     const markdown = `${header}\n## No supporting text found\n\nThe search returned ${sources.length} AI Act article(s), but the model found nothing in them that it could tie to this description. Nothing is quoted.\n\n${HUMAN_DECIDES}\n`;
-    return { outcome: "no_supporting_text", markdown, queries, sources, answer, creditsReported };
+    return { outcome: "no_supporting_text", markdown, queries, sources, answer, credits };
   }
 
   const body = renderAnswer(answer, sources, {
     quotes: "Provisions that may be relevant (quoted from the source text)",
     statements: "Why they may be relevant (written by the model - not legal text)",
   });
-  return { outcome: "answered", markdown: `${header}\n${body}\n${HUMAN_DECIDES}\n`, queries, sources, answer, creditsReported };
+  return { outcome: "answered", markdown: `${header}\n${body}\n${HUMAN_DECIDES}\n`, queries, sources, answer, credits };
 }
 
 function renderHeader(
@@ -160,7 +182,7 @@ function renderHeader(
   otherActs: number,
 ): string {
   return [
-    "# AI Act obligations finder",
+    "# AI Act provision finder",
     "",
     `**System described:** ${description}`,
     "",

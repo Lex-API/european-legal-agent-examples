@@ -10,7 +10,7 @@
  * polled, its existing relations are recorded as a baseline and not reported.
  */
 import type { LexAPI, SearchResult } from "@lexapi/client";
-import { creditsCharged } from "../../../shared/env.ts";
+import { CreditTally, creditsCharged } from "../../../shared/env.ts";
 import { eurLexUrl } from "../../../shared/grounding.ts";
 import type { Item } from "./items.ts";
 import { takeNew, type MonitorState } from "./state.ts";
@@ -21,7 +21,8 @@ export interface PollResult {
   items: Item[];
   /** Things the reader should know about this run (stale data, truncated lists, baselines). */
   notices: string[];
-  creditsReported: number;
+  /** Credits the API reported for this run, as text ("8", "not reported", ...). */
+  credits: string;
 }
 
 const RELATIONS = ["amendment", "corrigendum", "repeal"] as const;
@@ -29,7 +30,7 @@ const RELATIONS = ["amendment", "corrigendum", "repeal"] as const;
 export async function poll(client: LexAPI, watchlist: Watchlist, state: MonitorState, now: Date = new Date()): Promise<PollResult> {
   const items: Item[] = [];
   const notices: string[] = [];
-  let creditsReported = 0;
+  const tally = new CreditTally();
   const firstSeen = now.toISOString();
 
   const report = (candidates: Item[]): void => {
@@ -38,7 +39,7 @@ export async function poll(client: LexAPI, watchlist: Watchlist, state: MonitorS
 
   for (const act of watchlist.acts) {
     const { found, notice, credits } = await pollAct(client, act);
-    creditsReported += credits;
+    tally.add(credits);
     if (notice) notices.push(notice);
     if (!state.baselined.includes(act.celex)) {
       // First run for this act: remember what already exists, report nothing.
@@ -53,15 +54,15 @@ export async function poll(client: LexAPI, watchlist: Watchlist, state: MonitorS
   const dateFrom = new Date(now.getTime() - watchlist.days * 86_400_000).toISOString().slice(0, 10);
   for (const topic of watchlist.topics) {
     const { found, notice, credits } = await pollTopic(client, topic, watchlist.days, dateFrom);
-    creditsReported += credits;
+    tally.add(credits);
     if (notice) notices.push(notice);
     report(found);
   }
 
-  return { items, notices, creditsReported };
+  return { items, notices, credits: tally.describe() };
 }
 
-async function pollAct(client: LexAPI, act: WatchedAct): Promise<{ found: Item[]; notice?: string; credits: number }> {
+async function pollAct(client: LexAPI, act: WatchedAct): Promise<{ found: Item[]; notice?: string; credits: number | undefined }> {
   const response = await client.getCitedBy(act.celex, { citationType: [...RELATIONS], limit: 100 });
   const found: Item[] = [];
   for (const group of response.citedBy) {
@@ -101,9 +102,9 @@ async function pollTopic(
   topic: Topic,
   days: number,
   dateFrom: string,
-): Promise<{ found: Item[]; notice?: string; credits: number }> {
+): Promise<{ found: Item[]; notice?: string; credits: number | undefined }> {
   let results: SearchResult[];
-  let credits: number;
+  let credits: number | undefined;
   const notes: string[] = [];
 
   if (topic.query) {

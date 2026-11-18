@@ -53,7 +53,7 @@ try {
 
   if (values["dry-run"]) console.log(DRY_RUN_BANNER);
   console.log(digest.markdown);
-  console.error(`LexAPI credits reported for this run: ${result.creditsReported}.`);
+  console.error(`LexAPI credits reported for this run: ${result.credits}.`);
 } finally {
   await closeDryRun?.();
 }

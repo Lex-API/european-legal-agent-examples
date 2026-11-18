@@ -1,5 +1,5 @@
 /**
- * AI Act obligations finder - command line.
+ * AI Act provision finder - command line.
  *
  *   npm run ai-act -- "A tool that ranks job applicants' CVs"            (your keys)
  *   npm run ai-act -- --dry-run "A tool that ranks job applicants' CVs"  (no keys, fixtures)
@@ -51,9 +51,8 @@ try {
   if (values["dry-run"]) console.log(DRY_RUN_BANNER);
   console.log(result.markdown);
   console.error(
-    result.creditsReported === undefined
-      ? `LexAPI credits: ${result.queries.length} search(es) at 5 credits each (not reported by the MCP tool result).`
-      : `LexAPI credits reported for this run: ${result.creditsReported}.`,
+    `LexAPI credits reported for this run: ${result.credits}.` +
+      (values.via === "mcp" ? ` The MCP tool result does not carry them; ${result.queries.length} search(es) cost 5 credits each.` : ""),
   );
 } finally {
   await search.close();

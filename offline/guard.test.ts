@@ -26,7 +26,7 @@ test("the stub serves fixtures, records requests and answers 404 for unknown rou
     const info = await client.getInfo();
     assert.equal(info.subscription?.tier, "FREE");
     assert.equal(stub.requests[0]?.headers["x-api-key"], "lex_offline_test_key");
-    await assert.rejects(client.resolve("ECLI:EU:C:2020:559"), /no fixture/);
+    await assert.rejects(client.resolve("ECLI:EU:C:2099:901"), /no fixture/);
   } finally {
     await stub.close();
   }

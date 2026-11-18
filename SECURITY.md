@@ -16,6 +16,9 @@ compared in constant time, plus a 5-minute window on the signed `timestamp`. It 
 deliveries whose `delivery.id` it has already handled. The signature covers the body only, so the
 receiver does not trust request headers such as `X-Webhook-ID`.
 
+The receiver listens on `127.0.0.1` unless `HOST` says otherwise. Expose it only through a reverse
+proxy or tunnel that terminates HTTPS. It answers 413 to bodies over 5 MB.
+
 ## Reporting a vulnerability
 
 Please do not open a public issue for a security problem. Email support@lex-api.com with the details.

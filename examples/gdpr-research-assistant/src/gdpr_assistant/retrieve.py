@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from lexapi import LexAPI
+from lexapi import APIResponse, LexAPI
 from lexapi.models import Document, SemanticCaseLawResult, SemanticLegislationResult
 
 from gdpr_assistant.grounding import Source, eur_lex_url
@@ -43,6 +43,26 @@ class Retrieved:
     #: Things the reader should know (cases skipped, hits from other acts, ...).
     notices: list[str] = field(default_factory=list)
     credits_reported: int = 0
+    #: Calls whose response carried no credits figure (never counted as 0).
+    credits_unreported: int = 0
+
+    def add_credits(self, charged: int | None) -> None:
+        if charged is None:
+            self.credits_unreported += 1
+        else:
+            self.credits_reported += charged
+
+    def describe_credits(self) -> str:
+        if self.credits_unreported and not self.credits_reported:
+            return "not reported"
+        if self.credits_unreported:
+            return f"{self.credits_reported} ({self.credits_unreported} call(s) did not report credits)"
+        return str(self.credits_reported)
+
+
+def reported_credits(response: APIResponse) -> int | None:
+    """Credits a response reports for its own call; ``None`` when it reports none (not 0)."""
+    return response.credits.operation_weight if response.credits else None
 
 
 def base_act(hit: SemanticLegislationResult) -> str | None:
@@ -143,21 +163,21 @@ def select_paragraphs(document: Document, question: str, hint: int | None) -> li
 
 def case_sources(
     client: LexAPI, cases: list[SemanticCaseLawResult], question: str, first_id: int
-) -> tuple[list[Source], list[str], int]:
+) -> tuple[list[Source], list[str], list[int | None]]:
     sources: list[Source] = []
     notices: list[str] = []
-    credits = 0
+    credits: list[int | None] = []
     for case in cases[:MAX_CASES]:
         if not case.celex:
             continue
         response = client.get_document(case.celex, include=["metadata", "paragraphs"])
-        credits += response.units_charged or 0
+        credits.append(reported_credits(response))
         document = response.document
         name = case.ecli or document.ecli or case.celex
         availability = document.text_availability
         if document.content is None or (availability and availability.available is False):
-            reason = availability.reason if availability else None
-            notices.append(f"{name}: found by the search, but its text is not available in English ({reason}).")
+            reason = (availability.reason if availability else None) or "no reason given"
+            notices.append(f"{name}: found by the search, but its text is not available ({reason}).")
             continue
         chosen = select_paragraphs(document, question, case.paragraph_number)
         if not chosen:
@@ -184,7 +204,7 @@ def retrieve(client: LexAPI, question: str, as_of: str | None = None) -> Retriev
     result = Retrieved()
 
     legislation = client.semantic_legislation_search(question, limit=10, include_text=True, as_of=as_of)
-    result.credits_reported += legislation.units_charged or 0
+    result.add_credits(reported_credits(legislation))
     articles, other_acts = legislation_sources(legislation.results, as_of)
     result.sources += articles
     if other_acts:
@@ -196,11 +216,12 @@ def retrieve(client: LexAPI, question: str, as_of: str | None = None) -> Retriev
         )
 
     case_law = client.semantic_search(question, limit=5)
-    result.credits_reported += case_law.units_charged or 0
+    result.add_credits(reported_credits(case_law))
     if case_law.hint:
         result.notices.append(f"Case-law search: {case_law.hint}")
     paragraphs, notices, credits = case_sources(client, case_law.results, question, len(result.sources) + 1)
     result.sources += paragraphs
     result.notices += notices
-    result.credits_reported += credits
+    for charged in credits:
+        result.add_credits(charged)
     return result

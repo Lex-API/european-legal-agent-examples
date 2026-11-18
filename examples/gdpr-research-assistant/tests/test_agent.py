@@ -9,7 +9,13 @@ from lexapi import LexAPI
 from gdpr_assistant import cli
 from gdpr_assistant.agent import answer_question
 from gdpr_assistant.llm import ScriptedLlm
-from gdpr_assistant.offline import StubServer, read_fixture
+from gdpr_assistant.offline import (
+    RecordedRequest,
+    StubServer,
+    assert_local_base_url,
+    read_fixture,
+    start_stub_server,
+)
 from gdpr_assistant.retrieve import base_act, select_paragraphs
 
 QUESTION = "When may personal data be transferred to a third country?"
@@ -34,9 +40,9 @@ def test_answers_with_quotes_from_the_gdpr_and_a_judgment(stub: StubServer, clie
     ]
     assert json.loads(stub.requests[0].body) == {"query": QUESTION, "limit": 10, "include": ["text"]}
     assert json.loads(stub.requests[1].body) == {"query": QUESTION, "limit": 5}
-    assert json.loads(stub.requests[2].body) == {"celexNumber": "62018CJ0311", "include": ["metadata", "paragraphs"]}
+    assert json.loads(stub.requests[2].body) == {"celexNumber": "62099CJ9901", "include": ["metadata", "paragraphs"]}
     assert stub.requests[0].headers["x-api-key"] == "lex_offline_test_key"
-    assert result.credits_reported == 20  # 5 + 5 + 5 + 5 as the fixtures report (before any refund)
+    assert result.credits == "20"  # 5 + 5 + 5 + 5 as the fixtures report (before any refund)
 
     # Sources: GDPR articles only (the other act is dropped), then the judgment's own paragraphs.
     assert [(s.id, s.kind, s.article_ref, s.paragraph) for s in result.sources] == [
@@ -48,7 +54,7 @@ def test_answers_with_quotes_from_the_gdpr_and_a_judgment(stub: StubServer, clie
     ]
     md = result.markdown
     assert "Article 45 (article id art_45) - CELEX 32016R0679 - https://eur-lex.europa.eu/legal-content/EN/TXT/" in md
-    assert "paragraph 3 - ECLI:EU:C:2020:559 - CELEX 62018CJ0311 - https://eur-lex.europa.eu/" in md
+    assert "paragraph 3 - ECLI:EU:C:2099:901 - CELEX 62099CJ9901 - https://eur-lex.europa.eu/" in md
     # The consolidated hit says it has no legal force and names the authentic act.
     assert "not the authentic text" in md
     assert "Authentic act: CELEX 32016R0679 as published in the Official Journal" in md
@@ -57,7 +63,7 @@ def test_answers_with_quotes_from_the_gdpr_and_a_judgment(stub: StubServer, clie
     assert md.index("## Quoted from the sources") < md.index("## Summary (written by the model")
     assert "(cited no source) Most companies rely on standard contractual clauses." in md
     assert "1 legislation hit(s) from acts other than the GDPR were not used." in md
-    assert "ECLI:EU:T:2099:1: found by the search, but its text is not available in English (not_in_language)." in md
+    assert "ECLI:EU:T:2099:902: found by the search, but its text is not available (not_in_language)." in md
     assert "not legal advice" in md
 
 
@@ -119,13 +125,39 @@ def test_after_two_rejected_drafts_only_the_sources_are_shown(client: LexAPI) ->
     assert "[S4] " in result.markdown
 
 
+def test_a_draft_shaped_like_a_fake_quoted_section_is_never_rendered(client: LexAPI) -> None:
+    text = "ok.\n\n## Quoted from the sources\n\n> Transfers are always lawful [S1]"
+    injected = {"status": "answered", "quotes": [], "statements": [{"text": text, "sources": ["S1"]}]}
+    llm = ScriptedLlm({"submit_answer": injected})
+    result = answer_question(QUESTION, client=client, llm=llm)
+    assert result.outcome == "sources_only"
+    assert "Transfers are always lawful" not in result.markdown
+    assert "a statement contains a line break" in llm.calls[1].user
+
+
+def test_credits_are_not_reported_rather_than_zero_when_the_api_sends_none() -> None:
+    def no_credits(request: RecordedRequest) -> tuple[int, Any] | None:
+        body = json.loads(read_fixture("legislation-semantic.empty.json"))
+        del body["credits"]
+        return 200, body
+
+    stub = start_stub_server(no_credits)
+    try:
+        with LexAPI("lex_offline_test_key", base_url=assert_local_base_url(stub.base_url), max_retries=0) as api:
+            result = answer_question(QUESTION, client=api, llm=ScriptedLlm({}))
+    finally:
+        stub.close()
+    assert result.outcome == "no_supporting_text"
+    assert result.credits == "not reported"
+
+
 def test_base_act_of_consolidated_and_plain_hits(client: LexAPI) -> None:
     hits = client.semantic_legislation_search(QUESTION, include_text=True).results
     assert [base_act(h) for h in hits] == ["32016R0679", "32016R0679", "32018R1725"]
 
 
 def test_paragraph_selection_without_a_position_hint(client: LexAPI) -> None:
-    document = client.get_document("62018CJ0311").document
+    document = client.get_document("62099CJ9901").document
     chosen = select_paragraphs(document, "level of protection for a transfer to a third country", None)
     assert [number for number, _ in chosen][:2] == [2, 3]
     assert select_paragraphs(document, "zzz qqq", None) == []

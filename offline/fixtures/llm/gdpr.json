@@ -2,14 +2,38 @@
   "submit_answer": {
     "status": "answered",
     "quotes": [
-      { "source": "S1", "text": "a controller may transfer personal data to a third country only if the controller has provided appropriate placeholder safeguards" },
-      { "source": "S2", "text": "Such a transfer shall not require any specific authorisation." },
-      { "source": "S4", "text": "afforded a level of protection essentially equivalent to the placeholder standard" }
+      {
+        "source": "S1",
+        "text": "fixture wording about sending fixture data abroad when placeholder safeguards exist"
+      },
+      {
+        "source": "S2",
+        "text": "fixture wording saying no separate permission is needed in that case"
+      },
+      {
+        "source": "S4",
+        "text": "a level of protection comparable to the placeholder standard"
+      }
     ],
     "statements": [
-      { "text": "The retrieved articles describe two routes for a transfer: a decision that the third country is adequate, or appropriate safeguards provided by the controller.", "sources": ["S1", "S2"] },
-      { "text": "The retrieved judgment paragraphs address the level of protection the safeguards have to ensure and what the assessment takes into account.", "sources": ["S4", "S5"] },
-      { "text": "Most companies rely on standard contractual clauses.", "sources": [] }
+      {
+        "text": "The retrieved articles describe two routes for a transfer: an adequacy finding for the third country, or safeguards.",
+        "sources": [
+          "S1",
+          "S2"
+        ]
+      },
+      {
+        "text": "The retrieved judgment paragraphs address the level of protection the safeguards have to give and what is weighed.",
+        "sources": [
+          "S4",
+          "S5"
+        ]
+      },
+      {
+        "text": "Most companies rely on standard contractual clauses.",
+        "sources": []
+      }
     ]
   }
 }

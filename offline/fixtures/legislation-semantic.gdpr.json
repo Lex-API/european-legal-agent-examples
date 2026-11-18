@@ -16,8 +16,12 @@
       "consolidatedAsOf": "2099-01-01",
       "baseCelex": "32016R0679",
       "consolidatedNote": "The act as amended, consolidated as of 2099-01-01; not the authentic text. Only the Official Journal text is authentic.",
-      "baseAct": { "law_id": "32016R0679", "article_ref": "art_46", "score": 0.797 },
-      "text": "[SYNTHETIC FIXTURE - not the text of the act] Placeholder paragraph 1: in the absence of a placeholder decision, a controller may transfer personal data to a third country only if the controller has provided appropriate placeholder safeguards, and on condition that enforceable rights and effective legal remedies are available."
+      "baseAct": {
+        "law_id": "32016R0679",
+        "article_ref": "art_46",
+        "score": 0.797
+      },
+      "text": "[SYNTHETIC FIXTURE - not the text of the act] Placeholder provision E1: fixture wording about sending fixture data abroad when placeholder safeguards exist. Placeholder provision E2: fixture wording about remedies being available."
     },
     {
       "id": "fx-gdpr-0002",
@@ -27,7 +31,7 @@
       "language": "en",
       "score": 0.781,
       "exact_match_law_id": false,
-      "text": "[SYNTHETIC FIXTURE - not the text of the act] Placeholder paragraph 1: a transfer of personal data to a third country may take place where the placeholder authority has decided that the third country ensures an adequate level of protection. Such a transfer shall not require any specific authorisation."
+      "text": "[SYNTHETIC FIXTURE - not the text of the act] Placeholder provision F1: fixture wording about sending fixture data abroad after a placeholder adequacy finding. Placeholder provision F2: fixture wording saying no separate permission is needed in that case."
     },
     {
       "id": "fx-other-0003",
@@ -37,11 +41,22 @@
       "language": "en",
       "score": 0.722,
       "exact_match_law_id": false,
-      "text": "[SYNTHETIC FIXTURE - not the text of the act] Placeholder paragraph about transfers by Union institutions."
+      "text": "[SYNTHETIC FIXTURE - not the text of the act] Placeholder provision G1: fixture wording about transfers by fixture institutions."
     }
   ],
   "metadata": {},
   "tookMs": 388,
-  "subscription": { "tier": "FREE", "maxResults": 10 },
-  "credits": { "operation_weight": 5, "current": 5, "limit": 500, "remaining": 495, "included": 500, "topup": 0, "resetsAt": "2026-12-01T00:00:00.000Z" }
+  "subscription": {
+    "tier": "FREE",
+    "maxResults": 10
+  },
+  "credits": {
+    "operation_weight": 5,
+    "current": 5,
+    "limit": 500,
+    "remaining": 495,
+    "included": 500,
+    "topup": 0,
+    "resetsAt": "2026-12-01T00:00:00.000Z"
+  }
 }

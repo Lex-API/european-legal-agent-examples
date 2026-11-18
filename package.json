@@ -9,13 +9,14 @@
     "node": ">=20.12"
   },
   "scripts": {
-    "ai-act": "tsx examples/ai-act-obligations-finder/src/main.ts",
+    "ai-act": "tsx examples/ai-act-provision-finder/src/main.ts",
     "monitor": "tsx examples/regulatory-change-monitor/src/main.ts",
     "monitor:webhook-setup": "tsx examples/regulatory-change-monitor/src/webhook-setup.ts",
     "monitor:webhook-server": "tsx examples/regulatory-change-monitor/src/webhook-server.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test shared/grounding.test.ts shared/llm.test.ts offline/guard.test.ts examples/ai-act-obligations-finder/test/agent.test.ts examples/regulatory-change-monitor/test/monitor.test.ts"
+    "test": "node --import tsx --test shared/grounding.test.ts shared/llm.test.ts offline/guard.test.ts examples/ai-act-provision-finder/test/agent.test.ts examples/regulatory-change-monitor/test/monitor.test.ts",
+    "record-fixtures": "tsx scripts/record-fixtures.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.10.0",

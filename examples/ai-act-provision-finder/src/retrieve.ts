@@ -16,7 +16,10 @@ export const AI_ACT_CELEX = "32024R1689";
 export type LegislationHit = Pick<
   SemanticLegislationResult,
   "law_id" | "law_title" | "article_ref" | "score" | "text" | "snippet" | "consolidated" | "consolidatedAsOf" | "baseCelex" | "consolidatedNote"
->;
+> & {
+  /** Set by the MCP route when the tool cut the article text: how many characters are missing. */
+  truncatedBy?: number;
+};
 
 export interface SearchOutcome {
   hits: LegislationHit[];
@@ -81,6 +84,9 @@ export function toSources(hits: LegislationHit[], max: number): Retrieved {
         `${hit.consolidatedNote ?? "Consolidated text; not the authentic text."} ` +
           `Authentic act: CELEX ${hit.baseCelex ?? AI_ACT_CELEX} as published in the Official Journal (${eurLexUrl(hit.baseCelex ?? AI_ACT_CELEX)}).`,
       );
+    }
+    if (hit.truncatedBy) {
+      notes.push(`Text truncated by the tool: the last ${hit.truncatedBy} characters of this article were not retrieved, so nothing from them can be quoted.`);
     }
     return {
       id: `S${index + 1}`,

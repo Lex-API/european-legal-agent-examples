@@ -10,7 +10,7 @@
 import { verifyWebhook, WebhookSignatureError, type VerifyWebhookOptions, type WebhookChangeDocument, type WebhookPayload } from "@lexapi/client";
 import { eurLexUrl } from "../../../shared/grounding.ts";
 import { CONSOLIDATED_NOTE, type Item } from "./items.ts";
-import type { MonitorState } from "./state.ts";
+import { rememberDelivery, type MonitorState } from "./state.ts";
 
 /** Webhook relation names -> the citation types polling uses. */
 const POLL_RELATION: Record<string, string> = { amended_by: "amendment", corrected_by: "corrigendum", repealed_by: "repeal" };
@@ -39,10 +39,7 @@ export async function receiveDelivery(
   if (event.event === "webhook.test") return { status: 200, kind: "test" };
 
   const deliveryId = event.delivery?.id;
-  if (deliveryId) {
-    if (state.deliveries.includes(deliveryId)) return { status: 200, kind: "duplicate" };
-    state.deliveries.push(deliveryId);
-  }
+  if (deliveryId && !rememberDelivery(state, deliveryId)) return { status: 200, kind: "duplicate" };
 
   const notices: string[] = [];
   let items: Item[];

@@ -12,7 +12,7 @@ citation points at a source that was actually retrieved.
 
 | Example | Language | What it shows | LexAPI credits per run |
 | --- | --- | --- | --- |
-| [AI Act obligations finder](examples/ai-act-obligations-finder) | TypeScript | Describe an AI system; get the AI Act articles that may be relevant, quoted with article-level citations, and what a human must decide. Also runs through the MCP server. | 15 (5 per search) |
+| [AI Act provision finder](examples/ai-act-provision-finder) | TypeScript | Describe an AI system; get the AI Act articles that may be relevant, quoted with article-level citations, and what a human must decide. It finds provisions to read, not the obligations that apply. Also runs through the MCP server. | 15 (5 per search) |
 | [GDPR research assistant](examples/gdpr-research-assistant) | Python | Ask a question; get quotations from the GDPR and CJEU judgments with CELEX / ECLI and links, optionally for the text in force on a date. | 12-20 (up to 35 with `--as-of`) |
 | [Regulatory change monitor](examples/regulatory-change-monitor) | TypeScript | Watch acts and topics for new or changed documents; get a cited digest. Polling by default, signed webhooks on paid plans. | 8 for the example watch list |
 
@@ -38,7 +38,8 @@ The Python example has its own setup; see its README.
 
 You need:
 
-- Node.js 20.12 or later (TypeScript examples) and/or Python 3.10 or later (Python example).
+- Node.js 20.12 or later (TypeScript examples; CI runs Node 20 and 22) and/or Python 3.10 or
+  later (Python example; CI runs Python 3.12).
 - A LexAPI key from the [dashboard](https://lex-api.com/dashboard?ref=github-examples).
 - A model provider key. Adapters are included for Anthropic (default model `claude-sonnet-5-5`,
   override with `ANTHROPIC_MODEL`) and OpenAI (`LLM_PROVIDER=openai` and `OPENAI_MODEL`).
@@ -58,18 +59,22 @@ on FREE, and webhooks need a paid plan (the change monitor's polling mode does n
   numbered `S1`, `S2`, ... and those ids are the only way the model can refer to them.
 - **The model returns structure, not prose.** It submits quotes (source id + excerpt) and
   statements (text + source ids) through a tool call.
-- **Code checks the draft** ([`shared/grounding.ts`](shared/grounding.ts) and its Python twin):
-  a draft citing an id that was not retrieved is rejected; a quote that is not a verbatim excerpt
-  of its source is rejected; statements with no source are removed and listed.
+- **Code checks the draft** ([`shared/grounding.ts`](shared/grounding.ts) and its Python twin).
+  A draft is rejected if it cites an id that was not retrieved; if a quote is shorter than three
+  words or is not a verbatim excerpt of its source; if a quotation inside a statement is not
+  verbatim in a source that statement cites, or a quotation mark is left open; or if a quote or
+  statement is not one line of plain text. Statements with no source are removed and listed.
 - **Output keeps law and model text apart.** Quoted source text and model-written text are in
-  separate, labelled sections, and every source line has the CELEX number, article id or
-  paragraph, ECLI for case law, and a EUR-Lex link.
+  separate, labelled sections; Markdown in model-written text is escaped, so it cannot imitate
+  the quoted section; and every source line has the CELEX number, article id or paragraph, ECLI
+  for case law, and a EUR-Lex link.
 - **Versions are labelled.** A consolidated text is marked as having no legal force, with the
   authentic act named. "The text in force on a date" is stated only when the API reports
   `asOfResolved: true`.
 
-What the check does not do: it cannot tell whether a model-written sentence is a correct reading
-of the source it cites. That is why the quotes are always shown next to it.
+What the check does not do: it confirms that an excerpt is verbatim, not that it is quoted in
+context, and it cannot tell whether a model-written sentence is a correct reading of the source
+it cites. That is why the quotes are always shown next to it.
 
 ## What these examples are not
 
@@ -106,7 +111,17 @@ npm run lint && npm run typecheck && npm test
 examples/   one folder per example (README, .env.example, source, tests)
 shared/     TypeScript pieces the examples share: grounding check, model adapters, env
 offline/    stub server, synthetic fixtures, dry-run and test harness
+scripts/    record-fixtures (calls the real API; never run by tests or CI)
 ```
+
+### Recording real response shapes
+
+The fixtures in `offline/fixtures` are synthetic: placeholder texts and identifiers that cannot be
+mistaken for real ones, in the shapes the SDKs type. To compare them with what the API returns
+today, `npm run record-fixtures -- --i-have-a-key` makes the calls the examples make with your own
+`LEXAPI_API_KEY` (about 35-50 credits) and writes the responses to `fixtures-recorded/`. That
+folder is git-ignored: the files contain real legal texts and your account's plan and usage
+figures. The script refuses to run without the flag, inside a test run, or on a CI runner.
 
 Built against `@lexapi/client` 0.4.0 (npm), `lexapi-client` 0.4.0 (PyPI) and `@lexapi/mcp` 0.5.1.
 

@@ -6,10 +6,12 @@
  * it must cite the items it is about (the grounding check enforces that).
  */
 import {
-  DRAFT_SCHEMA,
   GroundingError,
+  STATEMENTS_SCHEMA,
   citation,
+  escapeMarkdown,
   parseDraft,
+  renderStatement,
   sourcesForPrompt,
   validateDraft,
   type GroundedAnswer,
@@ -20,12 +22,13 @@ import { itemsToSources, type Item } from "./items.ts";
 const DIGEST_TOOL = {
   name: "submit_digest",
   description: "Submit a short digest of the listed documents.",
-  schema: DRAFT_SCHEMA,
+  // Statements only: the records are printed by code, so the model has nothing to quote.
+  schema: STATEMENTS_SCHEMA,
 };
 
 const SYSTEM = `You write a short digest of new or changed EU legal documents for a reader who tracks them.
 
-You are given one record per document: its title, type, date and why it was picked up. That is all you know about each document - you have not read its text. Group related documents and say what each record shows. Do not describe what a document changes, requires or means beyond what its title states, and do not give advice. Cite the source ids for every sentence. Leave "quotes" empty unless you copy a title exactly.`;
+You are given one record per document: its title, type, date and why it was picked up. That is all you know about each document - you have not read its text. Group related documents and say what each record shows. Do not describe what a document changes, requires or means beyond what its title states, and do not give advice. Write each sentence as one line of plain text and cite the source ids it is about.`;
 
 /** Items handed to the model in one digest; the rest are still listed. */
 const MAX_FOR_MODEL = 30;
@@ -76,8 +79,8 @@ export async function buildDigest(input: DigestInput, llm: Llm): Promise<Digest>
     return { outcome: "list_only", markdown: `${heading}${records}\n## Summary\n\n${why}\n${notices}`, answer };
   }
 
-  const summary = answer.statements.map((s) => `- ${s.text} ${s.sources.map((id) => `[${id}]`).join("")}`).join("\n");
-  const removed = answer.removed.length > 0 ? `\nRemoved by the grounding check (cited no source): ${answer.removed.map((r) => `"${r.text}"`).join("; ")}\n` : "";
+  const summary = answer.statements.map(renderStatement).join("\n");
+  const removed = answer.removed.length > 0 ? `\nRemoved by the grounding check (cited no source): ${answer.removed.map((r) => `"${escapeMarkdown(r.text)}"`).join("; ")}\n` : "";
   const overflow = sources.length > forModel.length ? `\nThe summary covers the first ${forModel.length} of ${sources.length} documents.\n` : "";
   return {
     outcome: "summarised",

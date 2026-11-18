@@ -9,15 +9,42 @@
   "submit_findings": {
     "status": "answered",
     "quotes": [
-      { "source": "S1", "text": "a provider who considers that such a system does not belong to the placeholder category shall document that assessment before the system is placed on the market" },
-      { "source": "S2", "text": "a placeholder risk management system shall be established, implemented, documented and maintained" },
-      { "source": "S3", "text": "the persons concerned are informed that they are interacting with a placeholder system" }
+      {
+        "source": "S1",
+        "text": "fixture wording about how an example system is sorted into a placeholder category"
+      },
+      {
+        "source": "S2",
+        "text": "fixture wording about keeping a placeholder risk process running for the example system"
+      },
+      {
+        "source": "S3",
+        "text": "fixture wording about telling people that they are dealing with an example system"
+      }
     ],
     "statements": [
-      { "text": "This article sets out how a system is assigned to a category; whether a CV-screening tool is covered by it is a question for a qualified person.", "sources": ["S1"] },
-      { "text": "If the system were found to fall in that category, this article describes a risk management process that may be worth reading.", "sources": ["S2"] },
-      { "text": "The tool includes a chat interface for candidates, so the provision on telling people they are interacting with an AI system may be worth reading.", "sources": ["S3"] },
-      { "text": "Screening tools are widely used in recruitment.", "sources": [] }
+      {
+        "text": "This article sets out how a system is assigned to a category; whether a CV-screening tool is covered by it is a question for a qualified person.",
+        "sources": [
+          "S1"
+        ]
+      },
+      {
+        "text": "If the system were found to fall in that category, this article describes a risk management process that may be worth reading.",
+        "sources": [
+          "S2"
+        ]
+      },
+      {
+        "text": "The tool includes a chat interface for candidates, so the provision on telling people they are interacting with an AI system may be worth reading.",
+        "sources": [
+          "S3"
+        ]
+      },
+      {
+        "text": "Screening tools are widely used in recruitment.",
+        "sources": []
+      }
     ]
   }
 }

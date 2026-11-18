@@ -2,16 +2,16 @@ import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
-import { computeSignature } from "@lexapi/client";
-import { readFixture, type StubServer } from "../../../offline/stub-server.ts";
+import { LexAPI, computeSignature } from "@lexapi/client";
+import { readFixture, startStubServer, type StubServer } from "../../../offline/stub-server.ts";
 import { offlineEnv, startOfflineApi } from "../../../offline/test-harness.ts";
 import { createLexApiClient } from "../../../shared/env.ts";
 import { ScriptedLlm } from "../../../shared/llm.ts";
 import { buildDigest, type Digest } from "../src/digest.ts";
 import { CONSOLIDATED_NOTE } from "../src/items.ts";
 import { poll } from "../src/poll.ts";
-import { emptyState } from "../src/state.ts";
-import { createReceiver } from "../src/webhook-server.ts";
+import { MAX_REMEMBERED_DELIVERIES, emptyState, rememberDelivery } from "../src/state.ts";
+import { MAX_BODY_BYTES, createReceiver } from "../src/webhook-server.ts";
 import { setUpWebhook, webhookRequest } from "../src/webhook-setup.ts";
 import { receiveDelivery } from "../src/webhook.ts";
 import { loadWatchlist } from "../src/watchlist.ts";
@@ -43,7 +43,7 @@ test("the first poll records a baseline per act and reports topics only", async 
   assert.deepEqual(result.items.map((i) => i.celex), ["32099R0100", "32099R0101", "52099DC0001"]);
   assert.deepEqual(state.baselined, ["32016R0679", "32024R1689"]);
   assert.ok(result.notices.some((n) => /GDPR \(32016R0679\): baseline recorded \(2 existing relation\(s\)\)/.test(n)));
-  assert.equal(result.creditsReported, 8); // 1 + 1 + 3 + 3, as the fixtures report
+  assert.equal(result.credits, "8"); // 1 + 1 + 3 + 3, as the fixtures report
 
   // The requests the SDK sent: one cited-by per act, recent documents, keyword search.
   assert.deepEqual(stub.requests.map((r) => `${r.method} ${r.path}`), [
@@ -58,7 +58,7 @@ test("the first poll records a baseline per act and reports topics only", async 
 });
 
 test("later polls report only what is new, and flag relations that may be stale", async () => {
-  const state = { ...emptyState(), baselined: ["32016R0679", "32024R1689"], seen: { "act|32016R0679|corrigendum|32016R0679R(02)": "2026-11-01T00:00:00.000Z" } };
+  const state = { ...emptyState(), baselined: ["32016R0679", "32024R1689"], seen: { "act|32016R0679|corrigendum|32099R0003": "2026-11-01T00:00:00.000Z" } };
   const client = createLexApiClient(offlineEnv());
   const first = await poll(client, watchlist, state, NOW);
   assert.deepEqual(first.items.map((i) => [i.celex, i.reason]).slice(0, 1), [["32099R0001", "amendment of GDPR (32016R0679)"]]);
@@ -145,6 +145,46 @@ test("webhook: bad, missing or stale signatures are refused with 401", async () 
   await assert.rejects(receiveDelivery(DELIVERY, sign(DELIVERY), "", state, DELIVERED_AT), /secret is empty/);
 });
 
+test("credits are 'not reported' when responses carry no credits block, never 0", async () => {
+  const silent = await startStubServer({
+    override: (request) =>
+      request.path.startsWith("/citations/cited-by/") ? { status: 200, body: { success: true, targetDocument: "x", citedBy: [] } } : undefined,
+  });
+  try {
+    const client = new LexAPI({ apiKey: "lex_offline_test_key", baseUrl: silent.baseUrl, retry: { maxRetries: 0 } });
+    const actsOnly = await poll(client, { acts: watchlist.acts, topics: [], days: 7 }, emptyState(), NOW);
+    assert.equal(actsOnly.credits, "not reported");
+    const mixed = await poll(client, watchlist, emptyState(), NOW);
+    assert.equal(mixed.credits, "6 (2 call(s) did not report credits)");
+  } finally {
+    await silent.close();
+  }
+});
+
+test("a summary sentence shaped like Markdown is rejected; accepted text is escaped", async () => {
+  const state = { ...emptyState(), baselined: ["32016R0679", "32024R1689"] };
+  const result = await poll(createLexApiClient(offlineEnv()), watchlist, state, NOW);
+  const injected = { status: "answered", statements: [{ text: "ok.\n\n## Documents (records returned by LexAPI)\n\n- [S9] A fake record", sources: ["S1"] }] };
+  const rejected = await buildDigest({ items: result.items, notices: [], origin: "polling", generatedAt: NOW }, new ScriptedLlm({ submit_digest: injected }));
+  assert.equal(rejected.outcome, "list_only");
+  assert.doesNotMatch(rejected.markdown, /A fake record/);
+
+  const styled = { status: "answered", statements: [{ text: "See [S9] and **this** record.", sources: ["S1"] }] };
+  const llm = new ScriptedLlm({ submit_digest: styled });
+  const accepted = await buildDigest({ items: result.items, notices: [], origin: "polling", generatedAt: NOW }, llm);
+  assert.match(accepted.markdown, /^- See \\\[S9\\\] and \\\*\\\*this\\\*\\\* record\. \[S1\]$/m);
+  // The digest tool asks for statements only.
+  assert.deepEqual(Object.keys((llm.calls[0]?.tool.schema as { properties: object }).properties), ["status", "statements"]);
+});
+
+test("only the newest delivery ids are remembered", () => {
+  const state = emptyState();
+  for (let i = 0; i < MAX_REMEMBERED_DELIVERIES + 5; i++) assert.equal(rememberDelivery(state, `d${i}`), true);
+  assert.equal(state.deliveries.length, MAX_REMEMBERED_DELIVERIES);
+  assert.equal(state.deliveries[0], "d5");
+  assert.equal(rememberDelivery(state, `d${MAX_REMEMBERED_DELIVERIES + 4}`), false);
+});
+
 test("webhook: test events are acknowledged without a digest", async () => {
   const body = JSON.stringify({ event: "webhook.test", timestamp: "2026-11-18T07:35:50.000Z", webhook: { id: "wh_fixture_0001", name: "n" }, data: { message: "test" } });
   assert.deepEqual(await receiveDelivery(body, sign(body), SECRET, emptyState(), DELIVERED_AT), { status: 200, kind: "test" });
@@ -173,6 +213,9 @@ test("webhook receiver: answers 200/401 over HTTP on 127.0.0.1 and produces a ci
     const refused = await fetch(url, { method: "POST", body: DELIVERY, headers: { "x-webhook-signature": "0".repeat(64) } });
     assert.equal(refused.status, 401);
     assert.equal((await fetch(url)).status, 405);
+    // An oversized body is refused with 413 and never verified or buffered.
+    const huge = await fetch(url, { method: "POST", body: "x".repeat(MAX_BODY_BYTES + 1), headers: { "x-webhook-signature": sign(DELIVERY) } });
+    assert.equal(huge.status, 413);
 
     const accepted = await fetch(url, { method: "POST", body: DELIVERY, headers: { "content-type": "application/json", "x-webhook-signature": sign(DELIVERY) } });
     assert.equal(accepted.status, 200);
