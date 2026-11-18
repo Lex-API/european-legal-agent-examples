@@ -5,7 +5,7 @@ Small, runnable example agents that ground their answers in citable EU law using
 CJEU case law, a citation graph and semantic search behind one REST API.
 
 Each example is an explicit loop you can read top to bottom - retrieve, answer with citations
-(the first three quote their sources verbatim), and say so when the sources do not support an
+(the first three also check that any quotation is verbatim), and say so when the sources do not support an
 answer - with a check in code that every citation points at a source that was actually retrieved.
 
 ## Examples
@@ -59,8 +59,9 @@ on FREE, and webhooks need a paid plan (the change monitor's polling mode does n
 
 This section describes the first three examples. The LangChain example is a plain retrieval
 pipeline: the model writes free text citing passages as `[n]`, and code checks only its citations:
-every bracketed number must be a plain `[n]` naming a retrieved passage, and the answer must cite at
-least one (see its README).
+any bracketed token made only of numeric characters and separators must be exactly `[n]` naming a
+retrieved passage, and the answer must cite at least one unless it says the passages do not answer
+the question (see its README).
 
 - **Sources get run-local ids.** Retrieved articles, judgment paragraphs and document records are
   numbered `S1`, `S2`, ... and those ids are the only way the model can refer to them.
@@ -142,7 +143,7 @@ figures. The script refuses to run without the flag, inside a test run, or on a 
 
 Built against `@lexapi/client` 0.4.0 (npm), `lexapi-client` 0.4.0 (PyPI) and `@lexapi/mcp` 0.5.1.
 The LangChain example is built against `langchain-lexapi` 0.1.0 (installed from its repository at
-commit `724a62d`, which brings its own pinned `lexapi-client`), `langchain-core` 1.8.3 and
+commit `1680bc3`, which brings its own pinned `lexapi-client`), `langchain-core` 1.8.3 and
 `langchain-anthropic` 1.7.11.
 
 ## Security

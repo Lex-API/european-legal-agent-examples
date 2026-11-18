@@ -26,14 +26,24 @@ from langchain_lexapi import LexAPILegislationRetriever, RetrievalReport
 from lexapi import LexAPI, LexAPIError, PaymentPastDueError
 
 from dora_rag import offline
-from dora_rag.rag import DORA_CELEX, AnswerError, K, answer, format_passages, has_text, retrieve
+from dora_rag.rag import (
+    DORA_CELEX,
+    AnswerError,
+    K,
+    ModelCallError,
+    NoTextError,
+    answer,
+    format_passages,
+    has_text,
+    retrieve,
+)
 
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5-5"
 USER_AGENT_SUFFIX = "european-legal-agent-examples"
 LOCAL_PREFIX = "http://127.0.0.1:"
 NOTICE_MEANING = (
-    "A notice says only that LexAPI did not establish the text for that date; "
-    "it does not say whether the provision applied then."
+    "A notice gives only LexAPI's reason for having no text for that date; "
+    "check the source for whether the provision applied then."
 )
 CLOSING = (
     "Research support, not legal advice. The answer is model-written and may misread the passages; "
@@ -125,8 +135,8 @@ def render(
         lines += ["Sources:", *(source_line(n, doc) for n, doc in enumerate(documents, start=1)), ""]
     if as_of:
         lines.append(
-            f"Withheld for {as_of}: {report.returned_withheld} passage(s) arrived as a notice without text "
-            "(LexAPI did not establish their text for that date)."
+            f"Withheld for {as_of}: {report.returned_withheld} passage(s) have no text for that date "
+            "and arrived as a notice."
         )
         if report.returned_withheld:
             lines.append(NOTICE_MEANING)
@@ -185,6 +195,16 @@ def one_line(text: str) -> str:
     return text if len(text) <= 300 else text[:300] + "..."
 
 
+def model_failure(error: AnswerError | ModelCallError) -> str:
+    """One line for a failed model call or an unusable reply."""
+    if isinstance(error, AnswerError):
+        return one_line(f"The model's reply was not used: {error}")
+    cause = error.__cause__
+    if isinstance(cause, anthropic.APIError):
+        return one_line(f"The model provider returned an error ({type(cause).__name__}): {cause}")
+    return one_line(f"The model call failed ({type(cause).__name__}): {cause}")
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -226,25 +246,18 @@ def main(
             documents, report = retrieve(retriever, args.question, args.as_of)
         except LexAPIError as error:
             status = f" (HTTP {error.status})" if error.status is not None else ""
-            print(f"LexAPI refused the request{status}: {clean(error.code)}: {clean(error.message)}", file=sys.stderr)
+            print(one_line(f"LexAPI error{status}: {error.code}: {error.message}"), file=sys.stderr)
             if isinstance(error, PaymentPastDueError) and error.billing_url:
-                print(f"Billing: {clean(error.billing_url)}", file=sys.stderr)
+                print(f"Billing: {one_line(error.billing_url)}", file=sys.stderr)
             return 1
-        if any(has_text(doc) for doc in documents):
-            try:
-                answer_text = answer(args.question, documents, chat_model, args.as_of)
-            except AnswerError as error:
-                message = f"The model's reply was not used: {error}"
-            except anthropic.APIError as error:
-                message = f"The model provider returned an error ({type(error).__name__}): {one_line(str(error))}"
-            except Exception as error:  # any other failure of the model call
-                message = f"The model call failed ({type(error).__name__}): {one_line(str(error))}"
-            else:
-                message = ""
-            if message:
-                print(credits_line(report), file=sys.stderr)  # the search was charged
-                print(one_line(message), file=sys.stderr)
-                return 1
+        try:
+            answer_text = answer(args.question, documents, chat_model, args.as_of)
+        except NoTextError:
+            pass  # rendered below: no passage has text, no model was called
+        except (AnswerError, ModelCallError) as error:
+            print(credits_line(report), file=sys.stderr)  # the search was charged
+            print(model_failure(error), file=sys.stderr)
+            return 1
 
     if args.dry_run:
         print(offline.DRY_RUN_BANNER, file=out)

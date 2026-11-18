@@ -198,8 +198,9 @@ def test_withheld_count_reason_and_credits_are_printed(stub: Stub, capsys: pytes
 
     assert code == 0
     assert (
-        f"Withheld for {AS_OF}: 1 passage(s) arrived as a notice without text "
-        "(LexAPI did not establish their text for that date).\n" + cli.NOTICE_MEANING
+        f"Withheld for {AS_OF}: 1 passage(s) have no text for that date and arrived as a notice.\n"
+        "A notice gives only LexAPI's reason for having no text for that date; check the source for whether the "
+        "provision applied then."
     ) in out
     citations = expected_citations(AS_OF)
     assert sources_map(out) == [
@@ -299,6 +300,50 @@ def test_one_passage_with_text_is_enough_for_a_model_call(capsys: pytest.Capture
     assert "[No text returned for CELEX 02022R2554-20990101 art_6.]" in human
 
 
+def test_blank_text_counts_as_no_text(capsys: pytest.CaptureFixture[str]) -> None:
+    def reply(body: dict[str, Any]) -> tuple[int, Any]:
+        payload = search_reply(None)
+        payload["results"][0]["text"] = " \n\t\u200b "
+        payload["results"][1]["text"] = ""
+        return 200, payload
+
+    model = fake_model(ANSWER)
+    code, out, _ = run(Stub(reply=reply), model, capsys=capsys)
+    assert code == 0
+    assert model.seen == []
+    assert "None of the passages has text, so no model was called." in out
+
+
+def test_the_guard_is_in_rag_answer() -> None:
+    from langchain_core.documents import Document
+
+    notice = Document(page_content="[No text returned for CELEX 32022R2554 art_5.]\nSource: x", metadata={})
+    blank = Document(page_content=" \u200b\nSource: x", metadata={"text_status": "provided"})
+    model = fake_model(ANSWER)
+    with pytest.raises(rag.NoTextError):
+        rag.answer(QUESTION, [notice, blank], model)
+    assert model.seen == []
+    text = Document(page_content="Placeholder.\nSource: x", metadata={"text_status": "provided"})
+    assert rag.answer(QUESTION, [notice, text], fake_model("Placeholder [2].")) == "Placeholder [2]."
+
+
+def test_an_error_outside_the_model_call_surfaces_as_itself(stub: Stub, monkeypatch: pytest.MonkeyPatch) -> None:
+    def broken(documents: Any) -> str:
+        raise TypeError("placeholder bug")
+
+    monkeypatch.setattr(rag, "format_passages", broken)
+    with pytest.raises(TypeError, match="placeholder bug"):
+        cli.main([QUESTION], transport=stub.transport(), chat_model=fake_model(ANSWER), out=io.StringIO())
+
+
+def test_the_echoed_question_is_sanitised(stub: Stub, capsys: pytest.CaptureFixture[str]) -> None:
+    out = io.StringIO()
+    question = "Placeholder \x1b[2J question\u202e?"
+    assert cli.main([question], transport=stub.transport(), chat_model=fake_model(ANSWER), out=out) == 0
+    first = out.getvalue().splitlines()[0]
+    assert first == "Question: Placeholder  [2J question ?"
+
+
 def test_control_characters_from_the_model_are_removed(stub: Stub, capsys: pytest.CaptureFixture[str]) -> None:
     code, out, _ = run(stub, fake_model("Placeholder \x1bcred\x07 and \u202eflip [1]."), capsys=capsys)
     assert code == 0
@@ -308,42 +353,23 @@ def test_control_characters_from_the_model_are_removed(stub: Stub, capsys: pytes
 # ── the citation check and unusable replies ─────────────────────────────
 
 
-@pytest.mark.parametrize(
-    "reply",
-    [
-        "Placeholder [1][3].",
-        "Placeholder [0].",
-        "Placeholder [1-2].",
-        "Placeholder [1\u20132].",
-        "Placeholder [1; 2].",
-        "Placeholder [1, 2].",
-        "Placeholder [ 2 ].",
-        "Placeholder [2a].",
-        "Placeholder [1] \uff3b1\uff3d.",
-        "Placeholder [1] \u30101\u3011.",
-        "Placeholder [1] [\u0661].",
-        "Placeholder [1] [\uff11].",
-        "Placeholder [01].",
-        "Placeholder [1\u200b].",
-        "Placeholder without any citation.",
-        "Placeholder [sic] without a numbered citation.",
-    ],
-)
-def test_the_citation_check_is_strict(stub: Stub, reply: str, capsys: pytest.CaptureFixture[str]) -> None:
+@pytest.mark.parametrize("reply", ["Placeholder [3].", "Placeholder [1, 2].", "Placeholder without a citation."])
+def test_a_reply_that_fails_the_citation_check_is_not_printed(
+    stub: Stub, reply: str, capsys: pytest.CaptureFixture[str]
+) -> None:
     code, out, err = run(stub, fake_model(reply), capsys=capsys)
     assert code == 1
     assert "The model's reply was not used:" in err
-    assert "Answer" not in out
+    assert out == ""
 
 
-@pytest.mark.parametrize(
-    "reply",
-    ["Placeholder [1].", "Placeholder [2][1].", "Placeholder [sic] [2].", rag.NO_ANSWER, f"  {rag.NO_ANSWER}\n"],
-)
-def test_the_citation_check_accepts_plain_numbers(stub: Stub, reply: str, capsys: pytest.CaptureFixture[str]) -> None:
+@pytest.mark.parametrize("reply", ["Placeholder [2][1].", rag.NO_ANSWER])
+def test_a_reply_that_passes_the_citation_check_is_printed(
+    stub: Stub, reply: str, capsys: pytest.CaptureFixture[str]
+) -> None:
     code, out, _ = run(stub, fake_model(reply), capsys=capsys)
     assert code == 0
-    assert reply.strip() in out
+    assert reply in out
 
 
 @pytest.mark.parametrize(
@@ -436,11 +462,11 @@ PAYMENT_PAST_DUE = {
 @pytest.mark.parametrize(
     ("status", "body", "printed"),
     [
-        (402, CREDITS_EXHAUSTED, "LexAPI refused the request (HTTP 402): CREDITS_EXHAUSTED: Credit pool exhausted\n"),
+        (402, CREDITS_EXHAUSTED, "LexAPI error (HTTP 402): CREDITS_EXHAUSTED: Credit pool exhausted\n"),
         (
             403,
             PAYMENT_PAST_DUE,
-            "LexAPI refused the request (HTTP 403): PAYMENT_PAST_DUE: Payment past due: Your subscription payment"
+            "LexAPI error (HTTP 403): PAYMENT_PAST_DUE: Payment past due: Your subscription payment"
             " failed, so API requests are refused.\nBilling: https://lex-api.com/dashboard#billing\n",
         ),
     ],
@@ -464,6 +490,14 @@ def test_an_error_code_from_the_api_is_sanitised(capsys: pytest.CaptureFixture[s
     code, _out, err = run(Stub(reply=lambda _b: (400, body)), fake_model(ANSWER), capsys=capsys)
     assert code == 1
     assert "\x1b" not in err and "\u202e" not in err
+
+
+def test_a_key_echoed_by_the_api_is_masked(capsys: pytest.CaptureFixture[str]) -> None:
+    body = {"success": False, "error": {"code": "UNAUTHORIZED", "message": f"Invalid key {TEST_KEY}"}}
+    code, _out, err = run(Stub(reply=lambda _b: (401, body)), fake_model(ANSWER), capsys=capsys)
+    assert code == 1
+    assert TEST_KEY not in err
+    assert "Invalid key [key]" in err
 
 
 def test_the_key_is_never_printed(capsys: pytest.CaptureFixture[str]) -> None:

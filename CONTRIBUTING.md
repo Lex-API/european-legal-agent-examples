@@ -22,4 +22,5 @@ npm ci && npm run lint && npm run typecheck && npm test
 
 Each Python example gets its own virtual environment: they depend on different builds of
 `lexapi-client`. The LangChain example needs Python 3.11 or later, and access to the
-`langchain-lexapi` repository until that package is public.
+`langchain-lexapi` repository until that package is public: until then, installing needs GitHub
+access to that repository (for example `gh auth login`).
