@@ -2,7 +2,8 @@
 
 Issues and pull requests are welcome.
 
-- Keep examples small and readable: an explicit loop, no agent framework.
+- Keep examples small and readable: an explicit loop, no agent framework. Examples built on the
+  official LexAPI adapters for LangChain and LlamaIndex are in scope.
 - Every example must run with `--dry-run` (no keys) and ship offline tests. Tests must not reach
   the LexAPI service or a model provider; the harness refuses any base URL that is not a
   `http://127.0.0.1:` stub.
@@ -16,4 +17,5 @@ Before opening a pull request:
 ```bash
 npm ci && npm run lint && npm run typecheck && npm test
 cd examples/gdpr-research-assistant && pip install -e ".[dev]" && ruff check . && ruff format --check . && mypy && pytest -q
+cd ../langchain-eu-law-rag && pip install -e ".[dev]" && ruff check . && ruff format --check . && mypy && pytest -q
 ```

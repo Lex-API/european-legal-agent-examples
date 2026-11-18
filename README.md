@@ -15,6 +15,7 @@ citation points at a source that was actually retrieved.
 | [AI Act provision finder](examples/ai-act-provision-finder) | TypeScript | Describe an AI system; get the AI Act articles that may be relevant, quoted with article-level citations, and what a human must decide. It finds provisions to read, not the obligations that apply. Also runs through the MCP server. | 15 (5 per search) |
 | [GDPR research assistant](examples/gdpr-research-assistant) | Python | Ask a question; get quotations from the GDPR and CJEU judgments with CELEX / ECLI and links, optionally for the text in force on a date. | 12-20 (up to 35 with `--as-of`) |
 | [Regulatory change monitor](examples/regulatory-change-monitor) | TypeScript | Watch acts and topics for new or changed documents; get a cited digest. Polling by default, signed webhooks on paid plans. | 8 for the example watch list |
+| [DORA questions answered from cited passages](examples/langchain-eu-law-rag) | Python (LangChain) | Ask about DORA; a LangChain retriever fetches the articles, each with its Source line, and the model answers from them with `[1]`-style citations. Optionally for a date: passages without text for that date arrive as notices. Prints the credits used. | 5 (up to 20 with `--as-of`) |
 
 Credit figures are computed from the weights in the
 [API reference](https://lex-api.com/docs?ref=github-examples); each example's README shows the
@@ -32,17 +33,18 @@ npm run ai-act -- --dry-run "A SaaS tool that ranks job applicants' CVs and chat
 npm run monitor -- --dry-run
 ```
 
-The Python example has its own setup; see its README.
+The Python examples have their own setup; see their READMEs.
 
 ## Run one for real
 
 You need:
 
 - Node.js 20.12 or later (TypeScript examples; CI runs Node 20 and 22) and/or Python 3.10 or
-  later (Python example; CI runs Python 3.12).
+  later (Python examples; the LangChain example needs 3.11 or later; CI runs Python 3.12).
 - A LexAPI key from the [dashboard](https://lex-api.com/dashboard?ref=github-examples).
 - A model provider key. Adapters are included for Anthropic (default model `claude-sonnet-5-5`,
-  override with `ANTHROPIC_MODEL`) and OpenAI (`LLM_PROVIDER=openai` and `OPENAI_MODEL`).
+  override with `ANTHROPIC_MODEL`) and OpenAI (`LLM_PROVIDER=openai` and `OPENAI_MODEL`). The
+  LangChain example uses Anthropic only, through `langchain-anthropic`.
 
 Copy the example's `.env.example` to `.env`, fill it in, and run the command in its README.
 
@@ -54,6 +56,10 @@ handful of requests per run. Two limits to know: semantic search returns at most
 on FREE, and webhooks need a paid plan (the change monitor's polling mode does not).
 
 ## How the examples stay grounded
+
+This section describes the first three examples. The LangChain example is a plain retrieval
+pipeline: the model writes free text citing passages by number, and code checks only that each
+number is a passage that was retrieved (see its README).
 
 - **Sources get run-local ids.** Retrieved articles, judgment paragraphs and document records are
   numbered `S1`, `S2`, ... and those ids are the only way the model can refer to them.
@@ -101,9 +107,10 @@ it cites. That is why the quotes are always shown next to it.
 
 ## What is tested
 
-The test suites run offline. They use a local stub server on 127.0.0.1 that replays synthetic
-fixtures shaped like the API's responses, and a scripted stand-in for the model. They refuse to
-run against any base URL that does not start with `http://127.0.0.1:`.
+The test suites run offline. They use a local stub server on 127.0.0.1 (in-process mock transport
+for the LangChain example) that replays synthetic fixtures shaped like the API's responses, and a
+scripted stand-in for the model. They refuse to run against any base URL that does not start with
+`http://127.0.0.1:`.
 
 That means the code paths, the request shapes the SDKs send, the grounding rules and webhook
 signature verification are tested. The examples have **not** been run against the LexAPI
@@ -133,6 +140,9 @@ folder is git-ignored: the files contain real legal texts and your account's pla
 figures. The script refuses to run without the flag, inside a test run, or on a CI runner.
 
 Built against `@lexapi/client` 0.4.0 (npm), `lexapi-client` 0.4.0 (PyPI) and `@lexapi/mcp` 0.5.1.
+The LangChain example is built against `langchain-lexapi` 0.1.0 (installed from its repository at
+commit `724a62d`, which brings its own pinned `lexapi-client`), `langchain-core` 1.8.3 and
+`langchain-anthropic` 1.7.11.
 
 ## Security
 
