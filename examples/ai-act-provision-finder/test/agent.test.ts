@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
-import { LexAPI, LexAPIError, TierForbiddenError } from "@lexapi/client";
+import { LexAPI, LexAPIError } from "@lexapi/client";
 import { readFixture, startStubServer, type StubServer } from "../../../offline/stub-server.ts";
 import { assertLocalBaseUrl } from "../../../offline/guard.ts";
 import { REFUSALS, offlineEnv, startOfflineApi } from "../../../offline/test-harness.ts";
@@ -380,7 +380,8 @@ for (const [name, refusal] of Object.entries(REFUSALS)) {
       assert.equal(lexapiErrorLine(error, "lex_offline_test_key"), refusal.printed);
       // Nothing is added: no wait, no link, and a failed payment is not a plan gate to upgrade.
       assert.doesNotMatch(lexapiErrorLine(error), /retry|https?:|upgrade/i);
-      if (name === "past due") assert.ok(error instanceof TierForbiddenError && error.code === "PAYMENT_PAST_DUE");
+      // The SDK's code, whichever class it uses for a failed payment (0.4.0: the base class; later: a tier-error subclass).
+      if (name === "past due") assert.equal(error.code, "PAYMENT_PAST_DUE");
       assert.equal(refusing.requests.length, refusal.attempts); // the first search only; only a rate limit is retried
     } finally {
       await refusing.close();

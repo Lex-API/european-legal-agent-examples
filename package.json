@@ -18,10 +18,10 @@
     "test": "node --import tsx --test shared/env.test.ts shared/grounding.test.ts shared/llm.test.ts offline/guard.test.ts examples/ai-act-provision-finder/test/agent.test.ts examples/regulatory-change-monitor/test/monitor.test.ts",
     "record-fixtures": "tsx scripts/record-fixtures.ts"
   },
-  "//": "TODO(release): replace the vendored @lexapi/client build with @lexapi/client@^0.5.0 from npm and delete vendor/.",
+  "//": "TODO(release): change @lexapi/client to @lexapi/client@^0.5.0 once 0.5.0 is on npm.",
   "dependencies": {
     "@anthropic-ai/sdk": "1.10.0",
-    "@lexapi/client": "file:vendor/lexapi-client-4f3761b.tgz",
+    "@lexapi/client": "0.4.0",
     "@lexapi/mcp": "0.5.1",
     "@modelcontextprotocol/sdk": "1.32.2",
     "openai": "7.59.0"
