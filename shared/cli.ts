@@ -6,7 +6,7 @@
  */
 import { LexAPIError } from "@lexapi/client";
 import { DASHBOARD_URL, PrintedError, clean, lexapiErrorLines, mask } from "./lexapi-error.ts";
-import { LlmError } from "./llm.ts";
+import { LlmError, llmProvider } from "./llm.ts";
 
 /** A usage or configuration error (exit code 2), found before any request. */
 export class ConfigError extends Error {
@@ -33,14 +33,14 @@ export function missingSettings(env: NodeJS.ProcessEnv, needs: { lexapi: boolean
   const lines: string[] = [];
   if (needs.lexapi && !envKey(env, "LEXAPI_API_KEY")) lines.push(LEXAPI_KEY_MISSING);
   if (!needs.model) return lines;
-  const provider = (env.LLM_PROVIDER?.trim() || "anthropic").toLowerCase();
+  const provider = llmProvider(env);
   if (provider === "anthropic") {
     if (!envKey(env, "ANTHROPIC_API_KEY")) lines.push("ANTHROPIC_API_KEY is not set. Add an Anthropic API key to .env or use --dry-run.");
   } else if (provider === "openai") {
     if (!envKey(env, "OPENAI_API_KEY")) lines.push("OPENAI_API_KEY is not set. Add an OpenAI API key to .env or use --dry-run.");
     if (!env.OPENAI_MODEL?.trim()) lines.push("OPENAI_MODEL is not set. Name the OpenAI model to use (there is no default).");
   } else {
-    lines.push(`LLM_PROVIDER is "${clean(provider, 200) ?? ""}". Use "anthropic" or "openai".`);
+    lines.push(`LLM_PROVIDER is "${clean(env.LLM_PROVIDER, 200) ?? ""}"; it must be "anthropic" (the default) or "openai".`);
   }
   return lines;
 }

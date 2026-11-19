@@ -4,7 +4,7 @@ import { LexAPIError } from "@lexapi/client";
 import { DASHBOARD_LINE, REFUSAL_BODIES, REFUSAL_TEXTS } from "../offline/test-harness.ts";
 import { describeFailure, missingSettings } from "./cli.ts";
 import { UnreadableAnswerError, lexapiErrorLines, lexapiErrorText } from "./lexapi-error.ts";
-import { LlmError } from "./llm.ts";
+import { LlmError, createLlmFromEnv, llmProvider } from "./llm.ts";
 
 // The errors the SDK builds for these answers (no request is made).
 const STATUS = { credits: 402, quota: 429, "past due": 403, "rate limit": 429 } as const;
@@ -76,4 +76,29 @@ test("missing settings are named one per line; a model error is one masked line"
   assert.deepEqual(missingSettings({ LEXAPI_API_KEY: "lex_x", ANTHROPIC_API_KEY: "k" }, { lexapi: true, model: true }), []);
   const failure = describeFailure(new LlmError("invalid x-api-key lex_abcdefghij0123456789\nmore"));
   assert.deepEqual(failure, { lines: ["Model error: invalid x-api-key lex_*** more"], exitCode: 1 });
+});
+
+test("the dashboard link follows any 401, whatever its code, and credits exhausted; nothing else", () => {
+  const revoked = LexAPIError.fromResponse(401, { success: false, error: { code: "KEY_REVOKED", message: "This key was revoked" } });
+  assert.deepEqual(lexapiErrorLines(revoked), ["LexAPI error KEY_REVOKED (HTTP 401): This key was revoked.", DASHBOARD_LINE]);
+  assert.equal(lexapiErrorLines(LexAPIError.fromResponse(403, { success: false, error: { code: "TIER_FORBIDDEN", message: "x" } })).length, 1);
+});
+
+test("a failed payment answered with a 429 and a Retry-After prints no wait", () => {
+  const text = lexapiErrorText(LexAPIError.fromResponse(429, REFUSAL_BODIES["past due"], 7));
+  assert.match(text, /^LexAPI error PAYMENT_PAST_DUE \(HTTP 429\): /);
+  assert.doesNotMatch(text, /Retry after/);
+});
+
+test("LLM_PROVIDER is trimmed and lower-cased by the check and the factory alike; empty means anthropic", async () => {
+  assert.equal(llmProvider({}), "anthropic");
+  assert.equal(llmProvider({ LLM_PROVIDER: "" }), "anthropic");
+  assert.equal(llmProvider({ LLM_PROVIDER: " OpenAI " }), "openai");
+  const padded = { LEXAPI_API_KEY: "lex_x", LLM_PROVIDER: " openai", OPENAI_API_KEY: "sk-fake-offline-test", OPENAI_MODEL: " fake-model " };
+  assert.deepEqual(missingSettings(padded, { lexapi: true, model: true }), []);
+  assert.equal((await createLlmFromEnv(padded)).label, "openai:fake-model");
+  assert.equal((await createLlmFromEnv({ LLM_PROVIDER: "", ANTHROPIC_API_KEY: "sk-fake-offline-test" })).label, "anthropic:claude-sonnet-5-5");
+  assert.deepEqual(missingSettings({ LEXAPI_API_KEY: "lex_x", LLM_PROVIDER: "other" }, { lexapi: true, model: true }), [
+    'LLM_PROVIDER is "other"; it must be "anthropic" (the default) or "openai".',
+  ]);
 });

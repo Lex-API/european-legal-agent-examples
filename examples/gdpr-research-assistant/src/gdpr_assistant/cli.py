@@ -30,7 +30,7 @@ from lexapi import (
 )
 
 from gdpr_assistant.agent import answer_question
-from gdpr_assistant.llm import Llm, LlmError, ScriptedLlm, create_llm_from_env
+from gdpr_assistant.llm import Llm, LlmError, ScriptedLlm, create_llm_from_env, llm_provider
 from gdpr_assistant.offline import DRY_RUN_BANNER, assert_local_base_url, read_fixture, start_stub_server
 from gdpr_assistant.retrieve import Retrieved
 
@@ -50,9 +50,14 @@ class ConfigError(RuntimeError):
     """A missing key or setting (exit code 2), found before any request."""
 
 
+#: Test hook, not a feature: when set to ``1``, the example's ``.env`` is not read, so a process test sees only
+#: the environment it was given. The tests set it.
+TEST_IGNORE_DOTENV = "LEXAPI_EXAMPLES_TEST_IGNORE_DOTENV"
+
+
 def load_env_file(path: Path) -> None:
     """Load ``KEY=value`` lines into the environment (existing variables win)."""
-    if not path.exists():
+    if os.environ.get(TEST_IGNORE_DOTENV) == "1" or not path.exists():
         return
     for line in path.read_text(encoding="utf-8").splitlines():
         key, sep, value = line.strip().partition("=")
@@ -73,7 +78,7 @@ def missing_settings(env: Mapping[str, str], *, model: bool) -> list[str]:
     lines = [] if env_key("LEXAPI_API_KEY", env) else [LEXAPI_KEY_MISSING]
     if not model:
         return lines
-    provider = (env.get("LLM_PROVIDER", "").strip() or "anthropic").lower()
+    provider = llm_provider(env)
     if provider == "anthropic":
         if not env_key("ANTHROPIC_API_KEY", env):
             lines.append("ANTHROPIC_API_KEY is not set. Add an Anthropic API key to .env or use --dry-run.")
@@ -83,7 +88,8 @@ def missing_settings(env: Mapping[str, str], *, model: bool) -> list[str]:
         if not env.get("OPENAI_MODEL", "").strip():
             lines.append("OPENAI_MODEL is not set. Name the OpenAI model to use (there is no default).")
     else:
-        lines.append(f'LLM_PROVIDER is "{clean(provider, _VALUE_CAP) or ""}". Use "anthropic" or "openai".')
+        value = clean(env.get("LLM_PROVIDER", ""), _VALUE_CAP) or ""
+        lines.append(f'LLM_PROVIDER is "{value}"; it must be "anthropic" (the default) or "openai".')
     return lines
 
 

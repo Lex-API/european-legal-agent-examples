@@ -17,6 +17,7 @@ SHARED = {
         *("_DATE", "_EXPORT", "PLACEHOLDERS", "_DASHBOARD_CODES", "tidy"),
         *("clean", "today", "date_arg", "not_blank", "answer_heading", "load_env_file", "env_key"),
         *("require_keys", "create_client", "one_line", "refusal_lines", "model_failure"),
+        *("_LEX_KEY", "_response_json", "provider_message", "model_error_line"),
     ),
     "offline.py": ("DRY_RUN_BASE_URL", "DRY_RUN_BANNER", "FixturesNotFoundError", "read_fixture"),
 }

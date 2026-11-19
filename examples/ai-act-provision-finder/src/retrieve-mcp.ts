@@ -12,6 +12,7 @@
  */
 import { createRequire } from "node:module";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { McpError } from "@modelcontextprotocol/sdk/types.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { assertLocalBaseUrl } from "../../../offline/guard.ts";
 import { ConfigError, LEXAPI_KEY_MISSING, envKey } from "../../../shared/cli.ts";
@@ -31,6 +32,14 @@ export class McpToolError extends PrintedError {
   }
 }
 
+/** The MCP server process failed (it closed the connection, or did not answer in time). */
+export class McpServerError extends PrintedError {
+  constructor(message: string) {
+    super(`MCP server error: ${maskSecrets(clean(message, 1000) ?? "no message")}`);
+    this.name = "McpServerError";
+  }
+}
+
 export function stripTruncation(hit: LegislationHit): LegislationHit {
   const match = typeof hit.text === "string" ? TRUNCATION_MARKER.exec(hit.text) : null;
   if (!match || typeof hit.text !== "string") return hit;
@@ -39,9 +48,19 @@ export function stripTruncation(hit: LegislationHit): LegislationHit {
 
 export class McpLegislationSearch implements LegislationSearch {
   readonly label = "@lexapi/mcp (lex_semantic_legislation)";
-  private constructor(private readonly client: Client) {}
+  private constructor(
+    private readonly client: Client,
+    private readonly transport: StdioClientTransport,
+    private readonly requestTimeoutMs: number | undefined,
+  ) {}
 
-  static async start(env: NodeJS.ProcessEnv = process.env): Promise<McpLegislationSearch> {
+  /** The MCP server's process id while it runs. */
+  get pid(): number | null {
+    return this.transport.pid;
+  }
+
+  /** `requestTimeoutMs`: how long to wait for each tool call (the MCP SDK's default when not given). */
+  static async start(env: NodeJS.ProcessEnv = process.env, options: { requestTimeoutMs?: number } = {}): Promise<McpLegislationSearch> {
     const apiKey = envKey(env, "LEXAPI_API_KEY");
     if (!apiKey) throw new ConfigError(LEXAPI_KEY_MISSING);
     // The child process is outside the test harness's fetch guard, so under `node --test`
@@ -61,15 +80,28 @@ export class McpLegislationSearch implements LegislationSearch {
       },
     });
     const client = new Client({ name: "ai-act-provision-finder", version: "0.0.0" });
-    await client.connect(transport);
-    return new McpLegislationSearch(client);
+    try {
+      await client.connect(transport);
+    } catch (error) {
+      await transport.close().catch(() => {});
+      throw new McpServerError(error instanceof Error ? error.message : String(error));
+    }
+    return new McpLegislationSearch(client, transport, options.requestTimeoutMs);
   }
 
   async search(query: string): Promise<SearchOutcome> {
-    const result = await this.client.callTool({
-      name: "lex_semantic_legislation",
-      arguments: { query, limit: 10, include: ["text"], maxChars: MAX_CHARS },
-    });
+    let result: Awaited<ReturnType<Client["callTool"]>>;
+    try {
+      result = await this.client.callTool(
+        { name: "lex_semantic_legislation", arguments: { query, limit: 10, include: ["text"], maxChars: MAX_CHARS } },
+        undefined,
+        this.requestTimeoutMs === undefined ? undefined : { timeout: this.requestTimeoutMs },
+      );
+    } catch (error) {
+      // The server process closed the connection (-32000) or did not answer in time (-32001).
+      if (error instanceof McpError) throw new McpServerError(error.message);
+      throw error;
+    }
     const blocks = Array.isArray(result.content) ? (result.content as Array<{ type: string; text?: string }>) : [];
     const text = blocks.find((block) => block.type === "text")?.text ?? "";
     if (result.isError) throw new McpToolError(text);

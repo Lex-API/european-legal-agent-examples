@@ -11,7 +11,6 @@ import tempfile
 import threading
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -24,7 +23,6 @@ from gdpr_assistant.offline import RecordedRequest, StubServer, read_fixture, st
 QUESTION = "When may personal data be transferred to a third country?"
 KEY = "lex_offline_test_key_do_not_print_0123456789"
 DASHBOARD = "Dashboard: https://lex-api.com/dashboard?ref=github-examples"
-EXAMPLE = Path(__file__).resolve().parents[1]
 
 # The four answers that stop a run for a while (synthetic values) and the text the adapters print for each.
 BODIES: dict[str, tuple[int, dict[str, Any], dict[str, str]]] = {
@@ -311,7 +309,15 @@ def fake_model() -> Iterator[FakeModel]:
 def run_process(env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     # A clean environment, with an empty home: no model-provider configuration of this machine is read.
     with tempfile.TemporaryDirectory() as home:
-        child_env = {"PATH": os.environ.get("PATH", ""), "HOME": home, **env}
+        # Hermetic: the example's own .env is not read, and the provider and its URL are pinned.
+        child_env = {
+            "PATH": os.environ.get("PATH", ""),
+            "HOME": home,
+            cli.TEST_IGNORE_DOTENV: "1",
+            "LLM_PROVIDER": "anthropic",
+            "ANTHROPIC_BASE_URL": "http://127.0.0.1:9",  # nothing listens there; tests that need a model pass their own
+            **env,
+        }
         return subprocess.run(
             [sys.executable, "-c", GUARD, QUESTION], env=child_env, capture_output=True, text=True, timeout=120
         )
@@ -364,7 +370,6 @@ def test_a_rate_limit_as_a_process(fake_model: FakeModel) -> None:
     assert len(stub.requests) == 4
 
 
-@pytest.mark.skipif((EXAMPLE / ".env").exists(), reason="this example has its own .env")
 def test_missing_keys_as_a_process_exit_2_with_no_request(fake_model: FakeModel) -> None:
     stub = faulty_stub(None)
     try:
@@ -376,4 +381,51 @@ def test_missing_keys_as_a_process_exit_2_with_no_request(fake_model: FakeModel)
         cli.LEXAPI_KEY_MISSING,
         "ANTHROPIC_API_KEY is not set. Add an Anthropic API key to .env or use --dry-run.",
     ]
+    assert stub.requests == [] and fake_model.requests == 0
+
+
+def test_a_failed_payment_answered_with_a_429_and_a_wait_prints_no_wait() -> None:
+    from lexapi.errors import error_from_response
+
+    error = error_from_response(429, BODIES["past due"][1], retry_after=7)
+    text = cli.lexapi_error_text(error)
+    assert text.startswith("LexAPI error PAYMENT_PAST_DUE (HTTP 429): ")
+    assert "Retry after" not in text
+
+
+def test_the_dashboard_link_follows_any_401_and_credits_exhausted_only() -> None:
+    from lexapi.errors import error_from_response
+
+    revoked = error_from_response(401, {"success": False, "error": {"code": "KEY_REVOKED", "message": "Key revoked"}})
+    assert cli.lexapi_error_lines(revoked) == ["LexAPI error KEY_REVOKED (HTTP 401): Key revoked.", DASHBOARD]
+    legacy = error_from_response(401, {"error": "Invalid API key"})
+    assert cli.lexapi_error_lines(legacy)[1:] == [DASHBOARD]
+    assert len(cli.lexapi_error_lines(error_from_response(403, BODIES["past due"][1]))) == 1
+
+
+@pytest.mark.parametrize("value", ["", "  ", " Anthropic ", "openai ", "OPENAI"])
+def test_llm_provider_is_normalised_the_same_way_by_the_check_and_the_factory(value: str) -> None:
+    from gdpr_assistant.llm import AnthropicLlm, OpenAiLlm, create_llm_from_env, llm_provider
+
+    env = {
+        "LEXAPI_API_KEY": KEY,
+        "LLM_PROVIDER": value,
+        "ANTHROPIC_API_KEY": " sk-fake-offline-test ",
+        "OPENAI_API_KEY": " sk-fake-offline-test ",
+        "OPENAI_MODEL": " fake-model ",
+    }
+    assert cli.missing_settings(env, model=True) == []
+    llm = create_llm_from_env(env)
+    assert isinstance(llm, OpenAiLlm if llm_provider(env) == "openai" else AnthropicLlm)
+    assert llm.label in ("openai:fake-model", "anthropic:claude-sonnet-5-5")
+
+
+def test_an_unknown_llm_provider_is_a_configuration_error_before_any_request(fake_model: FakeModel) -> None:
+    stub = faulty_stub(None)
+    try:
+        done = run_process({**process_env(stub, fake_model), "LLM_PROVIDER": " bogus "})
+    finally:
+        stub.close()
+    assert done.returncode == 2 and done.stdout == ""
+    assert done.stderr.strip() == 'LLM_PROVIDER is "bogus"; it must be "anthropic" (the default) or "openai".'
     assert stub.requests == [] and fake_model.requests == 0

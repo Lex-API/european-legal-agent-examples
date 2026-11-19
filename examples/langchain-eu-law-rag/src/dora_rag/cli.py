@@ -17,7 +17,6 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, TextIO
 
-import anthropic
 import httpx
 from langchain_anthropic import ChatAnthropic
 from langchain_core.documents import Document
@@ -244,13 +243,13 @@ def one_line(text: str) -> str:
     return line[:300] + "..." if len(line) > 300 else line
 
 
-def refusal_lines(text: str, code: str) -> str:
-    """The adapter's error text, whole, on its own line; after a key or credits error, the dashboard link on the next.
+def refusal_lines(text: str, code: str, status: int | None) -> str:
+    """The adapter's error text, whole, on its own line; after any 401 or credits exhausted, the dashboard link next.
 
     The adapters already put the API's strings on one line and cap them, so nothing is cut here.
     """
     lines = [tidy(text)]
-    if code in _DASHBOARD_CODES:
+    if status == 401 or code in _DASHBOARD_CODES:
         lines.append(f"Dashboard: {DASHBOARD_URL}")
     return "\n".join(lines)
 
@@ -268,17 +267,43 @@ def refusal(error: LexAPIError) -> str:
         text = adapter_error_text(error)
     except ImportError:  # the adapter no longer provides its error text
         return one_line(f"LexAPI error: {error.code or type(error).__name__}")
-    return refusal_lines(text, error.code)
+    return refusal_lines(text, error.code, error.status)
+
+
+_LEX_KEY = re.compile(r"lex_[A-Za-z0-9_\-]+")
+
+
+def _response_json(error: BaseException | None) -> object:
+    response = getattr(error, "response", None)
+    try:
+        return response.json() if response is not None else None
+    except Exception:  # not JSON, or no body
+        return None
+
+
+def provider_message(error: BaseException | None) -> str:
+    """The model provider's own message: the ``error.message`` of its error body where the provider's SDK exposes
+    one (never the body's repr), else the error's text."""
+    for body in (getattr(error, "body", None), _response_json(error)):
+        if isinstance(body, dict):
+            inner = body.get("error")
+            message = inner.get("message") if isinstance(inner, dict) else body.get("message")
+            if isinstance(message, str) and message.strip():
+                return message
+    return str(error)
+
+
+def model_error_line(message: str) -> str:
+    """``Model error: <message>`` on one line, keys masked, cut at 1,000 characters (``…`` marks the cut)."""
+    text = _LEX_KEY.sub("lex_***", tidy(message))
+    return "Model error: " + (text[:1000].rstrip() + "…" if len(text) > 1000 else text)
 
 
 def model_failure(error: AnswerError | ModelCallError) -> str:
-    """One line for a failed model call or an unusable reply."""
+    """One line for a failed model call (the provider's message) or an unusable reply."""
     if isinstance(error, AnswerError):
         return one_line(f"The model's reply was not used: {error}")
-    cause = error.__cause__
-    if isinstance(cause, anthropic.APIError):
-        return one_line(f"The model provider returned an error ({type(cause).__name__}): {cause}")
-    return one_line(f"The model call failed ({type(cause).__name__}): {cause}")
+    return model_error_line(provider_message(error.__cause__))
 
 
 def _main(

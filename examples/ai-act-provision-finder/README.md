@@ -112,12 +112,17 @@ Nothing is printed on stdout; stderr gets one line per problem:
   403, payment past due; 429, a rate limit or an exhausted quota): the line the LexAPI adapters
   for LangChain and LlamaIndex print, `LexAPI error <code> (HTTP <status>): <message>.`, followed,
   when the error carries them, by when the credits or the quota reset, when access ended and the
-  billing link (payment past due), and the wait (a rate limit). After a key or credits error the
-  dashboard link follows on a line of its own. An answer the example cannot read gives
+  billing link (payment past due), and the wait (a rate limit). After any 401 (a key it does not
+  accept) and after credits exhausted, the dashboard link follows on a line of its own. An answer the example cannot read gives
   `LexAPI error INVALID_RESPONSE (HTTP 200): The answer could not be read.` When earlier calls of
   the run were charged, their credits line comes first.
-- **The model provider failed**: `Model error: <the provider's message>`.
-- **A key or setting is missing**: one line naming it, before any request.
+- **The model provider failed**: `Model error: <the provider's message>`, capped at 1,000
+  characters.
+- **A key or setting is missing or invalid**: one line naming it, before any request. `LLM_PROVIDER`
+  is trimmed and its case ignored; empty means `anthropic`; any value but `anthropic` or `openai` is
+  a configuration error.
+- **The MCP server process ended or did not answer in time** (`--via mcp`):
+  `MCP server error: <message>`; the server process is stopped.
 
 The SDK retries rate limits and gateway or connection errors by itself (up to 3 retries, each wait
 capped at 30 s) and waits up to 95 s for each answer, so a refused or hanging call can take a
@@ -164,7 +169,8 @@ bound, the MCP truncation handling, and `test/cli.test.ts`: the command line run
 against the stub and a local stand-in for the model API (exit code, stdout empty, no stack trace)
 for each refusal (credits exhausted, an exhausted quota, payment past due, a rate limit), a refusal
 after a charged search, an unreadable answer, a model-provider error, missing keys (exit 2, no
-request) and a refusal and an unreadable answer through the MCP route. The grounding rules themselves are tested from
+request), an unknown `LLM_PROVIDER`, and through the MCP route a refusal (also after a charged
+search), an unreadable answer, a server process that dies mid-call and one that does not answer. The grounding rules themselves are tested from
 `shared/grounding-vectors.json`, which the Python suite runs too. Not covered by any test: the live API and a real model.
 
 ## Sample output (illustrative)

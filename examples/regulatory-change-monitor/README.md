@@ -51,21 +51,31 @@ Nothing is printed on stdout; stderr gets one line per problem:
   403, payment past due; 429, a rate limit or an exhausted quota): the line the LexAPI adapters
   for LangChain and LlamaIndex print, `LexAPI error <code> (HTTP <status>): <message>.`, followed,
   when the error carries them, by when the credits or the quota reset, when access ended and the
-  billing link (payment past due), and the wait (a rate limit). After a key or credits error the
-  dashboard link follows on a line of its own. An answer the example cannot read gives
+  billing link (payment past due), and the wait (a rate limit). After any 401 (a key it does not
+  accept) and after credits exhausted, the dashboard link follows on a line of its own. An answer the example cannot read gives
   `LexAPI error INVALID_RESPONSE (HTTP 200): The answer could not be read.` When earlier calls of
   the run were charged, their credits line comes first.
-- **The model provider failed**: `Model error: <the provider's message>`.
-- **A key or setting is missing**: one line naming it, before any request.
+- **The model provider failed**: `Model error: <the provider's message>`, capped at 1,000
+  characters.
+- **A key or setting is missing or invalid**: one line naming it, before any request. `LLM_PROVIDER`
+  is trimmed and its case ignored; empty means `anthropic`; any value but `anthropic` or `openai` is
+  a configuration error.
 
 The SDK retries rate limits and gateway or connection errors by itself (up to 3 retries, each wait
 capped at 30 s) and waits up to 95 s for each answer, so a refused or hanging call can take a
 minute and a half or more before its line is printed.
 
 Exit codes: 0 printed; 1 LexAPI or the model failed; 2 a usage or configuration error, found before
-any request. The state file is written only after a run that printed its digest: a failed run
-leaves it byte for byte as it was, and a failed first run does not create it. A state file that is
-not the JSON the monitor writes stops the run (exit code 2, one line naming the file).
+any request.
+
+The state file is written after the digest is printed, through a temporary file in the same
+directory and a rename, so it is never half-written. A run that fails before its digest leaves the
+file byte for byte as it was (a failed first run does not create it). If the state cannot be written
+(a read-only directory, a full disk), the digest is still printed, then one line says the state was
+not saved, so the next run reports the same items again; exit code 1. A state path that is a
+directory or cannot be read, a state file that is not the JSON the monitor writes, and a watch list
+of the wrong shape each stop the run before any request (exit code 2, one line naming the file).
+The monitor is meant to run one at a time: two runs at once can each report the same items.
 
 ## The digest and its grounding
 
@@ -113,11 +123,15 @@ LEXAPI_WEBHOOK_SECRET=... npm run monitor:webhook-server   # listens on 127.0.0.
 
 - `src/webhook-setup.ts` creates one webhook (`webhooks.create`: the acts as `watchCelex`, the
   first topic as `searchCriteria`) and prints its id and its secret at once (the secret is shown
-  only in that answer), then sends a test delivery (`webhooks.test`). If the test delivery fails,
-  the webhook still exists: the script says so on stderr, with how to re-test it
-  (`client.webhooks.test(id)`, `POST /webhooks/{id}/test`) or remove it
-  (`client.webhooks.delete(id)`, `DELETE /webhooks/{id}`) before running setup again, and exits
-  with code 1. Webhook criteria match document titles only.
+  only in that answer), then sends a test delivery (`webhooks.test`). If the test fails - the call
+  is refused, or the delivery does not succeed (for example `FAILED` because the receiver is not
+  running yet) - the webhook still exists: the script says so on stderr, with the delivery's status
+  and message when there is one, and how to re-test it (`client.webhooks.test(id)`,
+  `POST /webhooks/{id}/test`) or remove it (`client.webhooks.delete(id)`, `DELETE /webhooks/{id}`)
+  before running setup again, and exits with code 1. If the answer to the create has no webhook id,
+  it prints that answer as returned (it may hold the secret of a webhook that now exists) and says
+  to list your webhooks (`client.webhooks.list()`, `GET /webhooks`) first. Webhook criteria match
+  document titles only.
 - `src/webhook.ts` verifies each delivery with the SDK's `verifyWebhook` over the **raw** request
   body (HMAC-SHA256 with the secret, constant-time comparison, 5-minute replay window), ignores
   deliveries whose `delivery.id` was already handled, and maps the payload to the same items
@@ -154,7 +168,9 @@ the stub and a local stand-in for the model API (exit code, stdout empty, no sta
 refusal (credits exhausted, an exhausted quota, payment past due, a rate limit), the state file
 byte for byte unchanged after a refused later run and not created by a refused first run, an
 unreadable answer, a model-provider error, a malformed state file, missing keys (exit 2, no
-request), and webhook setup refused at the create and at the test delivery. Not covered by any test: the live API, real deliveries and a real model.
+request), and webhook setup refused at the create, refused at the test delivery, with a delivery that FAILED and
+with a create answer without an id; a state file that cannot be written (the digest is printed
+first), a state path that is a directory, and watch lists of the wrong shape. Not covered by any test: the live API, real deliveries and a real model.
 
 ## Sample output (illustrative)
 

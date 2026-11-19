@@ -80,11 +80,12 @@ class AnthropicLlm:
     reply without one is re-prompted once.
     """
 
-    def __init__(self, model: str | None = None, client: Any = None) -> None:
+    def __init__(self, model: str | None = None, client: Any = None, api_key: str | None = None) -> None:
         if client is None:
             import anthropic  # optional dependency: pip install ".[anthropic]"
 
-            client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY
+            # Without an api_key, the SDK reads ANTHROPIC_API_KEY itself.
+            client = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
         self._client = client
         self._model = model or DEFAULT_ANTHROPIC_MODEL
         self.label = f"anthropic:{self._model}"
@@ -130,11 +131,12 @@ class AnthropicLlm:
 class OpenAiLlm:
     """OpenAI Chat Completions with one strict function the model is required to call."""
 
-    def __init__(self, model: str, client: Any = None) -> None:
+    def __init__(self, model: str, client: Any = None, api_key: str | None = None) -> None:
         if client is None:
             import openai  # optional dependency: pip install ".[openai]"
 
-            client = openai.OpenAI()  # reads OPENAI_API_KEY
+            # Without an api_key, the SDK reads OPENAI_API_KEY itself.
+            client = openai.OpenAI(api_key=api_key) if api_key else openai.OpenAI()
         self._client = client
         self._model = model
         self.label = f"openai:{model}"
@@ -178,6 +180,12 @@ class OpenAiLlm:
         raise LlmError(f"The model did not call the {request.tool_name} function.")
 
 
+def llm_provider(env: Mapping[str, str] | None = None) -> str:
+    """``LLM_PROVIDER``, trimmed and lower-cased; empty or unset means the default, ``anthropic``."""
+    env = os.environ if env is None else env
+    return env.get("LLM_PROVIDER", "").strip().lower() or "anthropic"
+
+
 def create_llm_from_env(env: Mapping[str, str] | None = None) -> Llm:
     """Pick the real adapter from the environment.
 
@@ -185,11 +193,13 @@ def create_llm_from_env(env: Mapping[str, str] | None = None) -> Llm:
     ``LLM_PROVIDER=openai``: ``OPENAI_API_KEY``, ``OPENAI_MODEL`` (required).
     """
     env = os.environ if env is None else env
-    provider = env.get("LLM_PROVIDER", "anthropic").lower()
+    provider = llm_provider(env)
     if provider == "anthropic":
-        return AnthropicLlm(env.get("ANTHROPIC_MODEL"))
+        model = env.get("ANTHROPIC_MODEL", "").strip() or None
+        return AnthropicLlm(model, api_key=env.get("ANTHROPIC_API_KEY", "").strip() or None)
     if provider == "openai":
-        if not env.get("OPENAI_MODEL"):
+        openai_model = env.get("OPENAI_MODEL", "").strip()
+        if not openai_model:
             raise LlmError("Set OPENAI_MODEL to the model id to use (there is no default).")
-        return OpenAiLlm(env["OPENAI_MODEL"])
+        return OpenAiLlm(openai_model, api_key=env.get("OPENAI_API_KEY", "").strip() or None)
     raise LlmError(f'Unknown LLM_PROVIDER "{provider}" (use "anthropic" or "openai").')

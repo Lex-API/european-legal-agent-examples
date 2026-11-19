@@ -226,11 +226,12 @@ Exit codes:
   arrived, for example a connection error), then, each only when it applies and in this order,
   `Credits reset at <time>.`, `This is an exhausted quota, not a rate limit.` (and
   `Quota resets at <time>.`), `Access ended at <time>.`, `Billing: <link>` and
-  `Retry after <n> s.` (only for an error LexAPI's client retries, such as a rate limit). After a
-  key or credits error, the example adds the dashboard link on a line of its own. The credits line
+  `Retry after <n> s.` (only for an error LexAPI's client retries, such as a rate limit). After any
+  401 (a key it does not accept) and after credits exhausted, the example adds the dashboard link on
+  a line of its own. The credits line
   of any earlier call of the run, which was charged, comes first. Also when the model call failed
-  or its reply was not used; then the credits line of the LexAPI calls, which were charged, is
-  printed first.
+  (`Model error: <the provider's message>`, capped at 1,000 characters) or its reply was not used;
+  then the credits line of the LexAPI calls, which were charged, is printed first.
   The LexAPI SDK retries rate limits and gateway or connection errors by itself (up to 3 retries,
   each wait capped at 30 s) and waits up to 95 s for each answer, so a refused or hanging call can
   take a minute and a half or more before its line is printed.
@@ -282,7 +283,7 @@ table, and a test that the two examples' check is the same code), unusable repli
 errors, 401/402/403/429/500 (credits, quota, payment past due and rate limit, each with its exact
 line, for the lookup and for the search) and unreadable answers, sanitised output, the API key never printed, the
 model settings, `.env` reading and an unfilled copy of `.env.example`, "today" in UTC whatever the
-local time zone, the dashboard link after a key or credits error, the client closed after the run,
+local time zone, the dashboard link after any 401 and after credits exhausted, the client closed after the run,
 the dry run (and its refusal of another act), the
 snippet in "The core", the sample outputs and the notice block above, and the output lines shared
 with the LangChain example.

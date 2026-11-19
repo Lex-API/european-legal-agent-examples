@@ -4,10 +4,14 @@
  * code, stdout and stderr.
  */
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { test } from "node:test";
-import { STACK_TRACE, hasOwnEnv, realRunEnv, runExample, startFakeModel } from "../../../offline/process-harness.ts";
+import { STACK_TRACE, realRunEnv, runExample, startFakeModel } from "../../../offline/process-harness.ts";
 import { startStubServer, type StubReply } from "../../../offline/stub-server.ts";
+import { assertLocalBaseUrl } from "../../../offline/guard.ts";
 import { REFUSALS } from "../../../offline/test-harness.ts";
+import { describeFailure } from "../../../shared/cli.ts";
+import { McpLegislationSearch } from "../src/retrieve-mcp.ts";
 
 const ENTRY = "examples/ai-act-provision-finder/src/main.ts";
 const DESCRIPTION = "A SaaS tool that ranks job applicants' CVs and chats with candidates";
@@ -87,7 +91,7 @@ test("through the MCP server, an unreadable answer is an error, not 'no supporti
   assert.doesNotMatch(run.stderr, STACK_TRACE);
 });
 
-test("missing keys: one line each, exit 2, and no request reaches LexAPI or the model", { skip: hasOwnEnv("ai-act-provision-finder") && "this example has its own .env" }, async () => {
+test("missing keys: one line each, exit 2, and no request reaches LexAPI or the model", async () => {
   for (const args of [[], ["--via", "mcp"]]) {
     const stub = await startStubServer();
     const fake = await startFakeModel("ai-act");
@@ -112,4 +116,90 @@ test("a usage error exits 2 without a stack trace", async () => {
   const run = await runExample(ENTRY, ["--no-such-option", "x"], {});
   assert.equal(run.code, 2);
   assert.doesNotMatch(run.stderr, STACK_TRACE);
+});
+
+/** True while a process with this id exists. */
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+test("through the MCP server, a refusal after a charged search prints the credits line in the same form as a finished run", async () => {
+  const run = await runWithFault(REFUSALS.credits, 2, ["--via", "mcp"]);
+  assert.equal(run.code, 1);
+  assert.equal(run.stdout, "");
+  const lines = run.stderr.trimEnd().split("\n");
+  assert.equal(lines.length, 2, run.stderr);
+  assert.equal(lines[0], "LexAPI credits reported for this run: not reported. The MCP tool result does not carry them; 1 search(es) cost 5 credits each.");
+  assert.match(lines[1]!, /CREDITS_EXHAUSTED/);
+});
+
+test("through the MCP server, a server that dies mid-call is one line, exit 1, and leaves no process behind", async () => {
+  let killed: number[] = [];
+  const stub = await startStubServer({
+    override: () => {
+      // The MCP server process is the only child of the command line: end it while it waits for this answer.
+      killed = execFileSync("pgrep", ["-P", String(cliPid)], { encoding: "utf8" }).trim().split("\n").filter(Boolean).map(Number);
+      for (const pid of killed) process.kill(pid, "SIGKILL");
+      return "hang";
+    },
+  });
+  const fake = await startFakeModel("ai-act");
+  let cliPid = 0;
+  try {
+    const run = await runExample(ENTRY, ["--via", "mcp", DESCRIPTION], realRunEnv(stub.baseUrl, fake), (pid) => (cliPid = pid));
+    assert.equal(run.code, 1, run.stderr);
+    assert.equal(run.stdout, "");
+    assert.match(run.stderr.trim(), /^MCP server error: .*Connection closed/);
+    assert.equal(run.stderr.trim().split("\n").length, 1);
+    assert.doesNotMatch(run.stderr, STACK_TRACE);
+    assert.ok(killed.length > 0);
+    assert.ok(killed.every((pid) => !alive(pid)));
+  } finally {
+    await stub.close();
+    await fake.close();
+  }
+});
+
+test("through the MCP server, a call that is not answered in time is one line, and the server process is stopped", async () => {
+  const stub = await startStubServer({ override: () => "hang" });
+  try {
+    const search = await McpLegislationSearch.start(
+      { LEXAPI_API_KEY: "lex_offline_test_key", LEXAPI_BASE_URL: assertLocalBaseUrl(stub.baseUrl) },
+      { requestTimeoutMs: 300 },
+    );
+    const pid = search.pid;
+    assert.ok(pid);
+    const error = await search.search("query").then(() => undefined, (thrown: unknown) => thrown);
+    await search.close();
+    assert.deepEqual(describeFailure(error)?.exitCode, 1);
+    assert.match(describeFailure(error)?.lines[0] ?? "", /^MCP server error: .*Request timed out/);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    assert.equal(alive(pid), false);
+  } finally {
+    await stub.close();
+  }
+});
+
+test("LLM_PROVIDER: an unknown value is a configuration error before any request; empty means the default", async () => {
+  const stub = await startStubServer();
+  const fake = await startFakeModel("ai-act");
+  try {
+    const bogus = await runExample(ENTRY, [DESCRIPTION], { ...realRunEnv(stub.baseUrl, fake), LLM_PROVIDER: " bogus " });
+    assert.equal(bogus.code, 2);
+    assert.equal(bogus.stderr.trim(), 'LLM_PROVIDER is "bogus"; it must be "anthropic" (the default) or "openai".');
+    assert.equal(stub.requests.length, 0);
+    assert.equal(fake.requests, 0);
+    for (const value of ["", "  ", " Anthropic "]) {
+      const run = await runExample(ENTRY, [DESCRIPTION], { ...realRunEnv(stub.baseUrl, fake), LLM_PROVIDER: value });
+      assert.equal(run.code, 0, `${JSON.stringify(value)}: ${run.stderr}`);
+    }
+  } finally {
+    await stub.close();
+    await fake.close();
+  }
 });

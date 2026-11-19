@@ -654,14 +654,15 @@ def test_a_model_provider_error_exits_1_without_a_traceback(
     assert out == ""
     lines = err.strip().splitlines()
     assert lines[0].startswith("LexAPI credits used for this run: 9 ")
-    assert len(lines) == 2 and lines[1].startswith("The model provider returned an error (")
+    expected = "Connection error." if kind == "connection" else f"placeholder {kind}"
+    assert lines[1:] == [f"Model error: {expected}"]  # the provider's message, not the error's repr
     assert "Traceback" not in err and "\x1b" not in err and TEST_KEY not in err
 
 
 def test_any_other_model_failure_exits_1_without_a_traceback(stub: Stub, capsys: pytest.CaptureFixture[str]) -> None:
     code, _out, err = ask(stub, scripted(ValueError("placeholder failure")), capsys=capsys)
     assert code == 1
-    assert err.strip().splitlines()[1] == "The model call failed (ValueError): placeholder failure"
+    assert err.strip().splitlines()[1] == "Model error: placeholder failure"
 
 
 def test_a_bug_outside_the_model_call_is_not_reported_as_a_model_failure(

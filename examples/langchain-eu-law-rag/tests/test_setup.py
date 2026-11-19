@@ -175,7 +175,7 @@ def test_today_is_the_utc_date_whatever_the_local_zone(
 @pytest.mark.parametrize("code", ["UNAUTHORIZED", "INVALID_API_KEY", "CREDITS_EXHAUSTED"])
 def test_a_key_or_credits_error_is_followed_by_the_dashboard_link_on_its_own_line(code: str) -> None:
     text = f"LexAPI error {code} (HTTP 402): Placeholder."
-    assert cli.refusal_lines(text, code) == f"{text}\n{DASHBOARD}"
+    assert cli.refusal_lines(text, code, 402) == f"{text}\n{DASHBOARD}"
 
 
 BILLING_URL = "https://lex-api.com/dashboard#billing"
@@ -184,19 +184,22 @@ BILLING_URL = "https://lex-api.com/dashboard#billing"
 @pytest.mark.parametrize("code", ["RATE_LIMITED", "QUOTA_EXHAUSTED", "PAYMENT_PAST_DUE", "TIER_FORBIDDEN", "INTERNAL"])
 def test_other_errors_get_no_dashboard_link(code: str) -> None:
     text = f"LexAPI error {code} (HTTP 403): Placeholder. Billing: {BILLING_URL}"
-    assert cli.refusal_lines(text, code) == text
+    assert cli.refusal_lines(text, code, 403) == text
 
 
 def test_the_adapters_text_is_printed_whole() -> None:
     end = f" Credits reset at 2026-07-01T00:00:00Z. Billing: {BILLING_URL} Retry after 7 s."
     text = "LexAPI error CREDITS_EXHAUSTED (HTTP 402): " + "x" * 1000 + "." + end
-    assert cli.refusal_lines(text, "CREDITS_EXHAUSTED") == f"{text}\n{DASHBOARD}"
+    assert cli.refusal_lines(text, "CREDITS_EXHAUSTED", 402) == f"{text}\n{DASHBOARD}"
 
 
 def test_a_key_from_the_environment_is_masked_in_the_error_text(monkeypatch: pytest.MonkeyPatch) -> None:
     key = "sk-ant-api03-" + "Zq" * 20
     monkeypatch.setenv("ANTHROPIC_API_KEY", key)
-    assert cli.refusal_lines(f"LexAPI error X (HTTP 400): {key} more.", "X") == "LexAPI error X (HTTP 400): [key] more."
+    assert (
+        cli.refusal_lines(f"LexAPI error X (HTTP 400): {key} more.", "X", 400)
+        == "LexAPI error X (HTTP 400): [key] more."
+    )
 
 
 def test_a_key_across_the_cut_stays_masked(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -209,7 +212,7 @@ def test_a_key_across_the_cut_stays_masked(monkeypatch: pytest.MonkeyPatch) -> N
 
 def test_control_characters_in_the_error_text_are_removed() -> None:
     url = "https://lex-api.com/\x1b[2Jbilling‮"
-    line = cli.refusal_lines(f"LexAPI error P (HTTP 403): Due.\nBilling: {url}", "P")
+    line = cli.refusal_lines(f"LexAPI error P (HTTP 403): Due.\nBilling: {url}", "P", 403)
     assert "\x1b" not in line and "‮" not in line and "\n" not in line
     assert line.endswith("Due. Billing: https://lex-api.com/ [2Jbilling")
 
@@ -281,3 +284,24 @@ def test_ctrl_c_exits_130_without_a_traceback(monkeypatch: pytest.MonkeyPatch, c
     assert cli.main([QUESTION]) == 130
     captured = capsys.readouterr()
     assert captured.out == "" and "Traceback" not in captured.err
+
+
+@pytest.mark.parametrize("code", ["KEY_REVOKED", "UNAUTHORIZED", "SOMETHING_NEW"])
+def test_the_dashboard_link_follows_any_401_whatever_its_code(code: str) -> None:
+    text = f"LexAPI error {code} (HTTP 401): Placeholder."
+    assert cli.refusal_lines(text, code, 401) == f"{text}\n{DASHBOARD}"
+
+
+def test_a_model_error_is_the_providers_message_capped_and_masked(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-fake-offline-test-not-a-key")
+
+    class WithBody(Exception):
+        body = {"type": "error", "error": {"type": "invalid_request_error", "message": "bad\nrequest lex_abcdef0123"}}
+
+    assert (
+        cli.model_error_line(cli.provider_message(WithBody("Error code: 400 - {...}")))
+        == "Model error: bad request lex_***"
+    )
+    long = cli.model_error_line("x" * 2000)
+    assert long == "Model error: " + "x" * 1000 + "…"
+    assert cli.model_error_line("key sk-fake-offline-test-not-a-key") == "Model error: key [key]"

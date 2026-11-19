@@ -20,6 +20,13 @@ import { SdkLegislationSearch, type LegislationSearch } from "./retrieve.ts";
 
 const USAGE = 'Usage: npm run ai-act -- [--dry-run] [--via sdk|mcp] [--max-queries N] "<description of the AI system>"';
 const tally = new CreditTally();
+let via = "sdk";
+
+/** The credits line: what the API reported; through MCP, also what the searches cost. */
+function creditsLine(reported: string, searches: number): string {
+  const mcp = via === "mcp" ? ` The MCP tool result does not carry them; ${searches} search(es) cost 5 credits each.` : "";
+  return `LexAPI credits reported for this run: ${reported}.${mcp}`;
+}
 
 await runCli(
   async () => {
@@ -34,6 +41,7 @@ await runCli(
     const description = positionals.join(" ").trim();
     if (!description) throw new ConfigError(USAGE);
     if (values.via !== "sdk" && values.via !== "mcp") throw new ConfigError(`--via is "sdk" or "mcp".\n${USAGE}`);
+    via = values.via;
     const maxQueries = Math.min(Math.max(Number.parseInt(values["max-queries"], 10) || 3, 1), 3);
 
     loadEnvFile(join(dirname(fileURLToPath(import.meta.url)), "..", ".env"));
@@ -56,14 +64,11 @@ await runCli(
       const result = await findProvisions(description, { llm, search }, { maxQueries, tally });
       if (values["dry-run"]) console.log(DRY_RUN_BANNER);
       console.log(result.markdown);
-      console.error(
-        `LexAPI credits reported for this run: ${result.credits}.` +
-          (values.via === "mcp" ? ` The MCP tool result does not carry them; ${result.queries.length} search(es) cost 5 credits each.` : ""),
-      );
+      console.error(creditsLine(result.credits, result.queries.length));
     } finally {
       await search?.close();
       await closeDryRun?.();
     }
   },
-  () => (tally.count > 0 ? `LexAPI credits reported for this run: ${tally.describe()}.` : undefined),
+  () => (tally.count > 0 ? creditsLine(tally.describe(), tally.count) : undefined),
 );

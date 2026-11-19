@@ -7,9 +7,10 @@ export class OpenAiLlm implements Llm {
   private readonly client: OpenAI;
   private readonly model: string;
 
-  constructor(options: { model: string; client?: OpenAI }) {
+  constructor(options: { model: string; client?: OpenAI; apiKey?: string }) {
     this.model = options.model;
-    this.client = options.client ?? new OpenAI(); // reads OPENAI_API_KEY
+    // Without an apiKey, the SDK reads OPENAI_API_KEY itself.
+    this.client = options.client ?? new OpenAI(options.apiKey ? { apiKey: options.apiKey } : {});
     this.label = `openai:${this.model}`;
   }
 

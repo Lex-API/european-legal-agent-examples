@@ -16,9 +16,10 @@ export class AnthropicLlm implements Llm {
   private readonly client: Anthropic;
   private readonly model: string;
 
-  constructor(options: { model?: string; client?: Anthropic } = {}) {
+  constructor(options: { model?: string; client?: Anthropic; apiKey?: string } = {}) {
     this.model = options.model || DEFAULT_ANTHROPIC_MODEL;
-    this.client = options.client ?? new Anthropic(); // reads ANTHROPIC_API_KEY
+    // Without an apiKey, the SDK reads ANTHROPIC_API_KEY itself.
+    this.client = options.client ?? new Anthropic(options.apiKey ? { apiKey: options.apiKey } : {});
     this.label = `anthropic:${this.model}`;
   }
 

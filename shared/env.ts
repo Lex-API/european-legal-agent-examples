@@ -2,8 +2,15 @@ import { existsSync } from "node:fs";
 import { LexAPI } from "@lexapi/client";
 import { ConfigError, LEXAPI_KEY_MISSING, envKey } from "./cli.ts";
 
+/**
+ * Test hook, not a feature: when set to `1`, the example's `.env` is not read, so a
+ * process test sees only the environment it was given. The test harness sets it.
+ */
+export const TEST_IGNORE_DOTENV = "LEXAPI_EXAMPLES_TEST_IGNORE_DOTENV";
+
 /** Load `KEY=value` lines from a file into `process.env` (existing variables win). */
 export function loadEnvFile(path: string): void {
+  if (process.env[TEST_IGNORE_DOTENV] === "1") return;
   if (existsSync(path)) process.loadEnvFile(path);
 }
 

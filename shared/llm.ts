@@ -77,21 +77,27 @@ export class ScriptedLlm implements Llm {
   }
 }
 
+/** `LLM_PROVIDER`, trimmed and lower-cased; empty or unset means the default, `anthropic`. */
+export function llmProvider(env: NodeJS.ProcessEnv = process.env): string {
+  return env.LLM_PROVIDER?.trim().toLowerCase() || "anthropic";
+}
+
 /**
  * Pick the real adapter from the environment:
  *   LLM_PROVIDER=anthropic (default)  ANTHROPIC_API_KEY, ANTHROPIC_MODEL (default claude-sonnet-5-5)
  *   LLM_PROVIDER=openai               OPENAI_API_KEY, OPENAI_MODEL (required)
  */
 export async function createLlmFromEnv(env: NodeJS.ProcessEnv = process.env): Promise<Llm> {
-  const provider = (env.LLM_PROVIDER ?? "anthropic").toLowerCase();
+  const provider = llmProvider(env);
   if (provider === "anthropic") {
     const { AnthropicLlm } = await import("./llm-anthropic.ts");
-    return new AnthropicLlm({ model: env.ANTHROPIC_MODEL });
+    return new AnthropicLlm({ model: env.ANTHROPIC_MODEL?.trim() || undefined, apiKey: env.ANTHROPIC_API_KEY?.trim() || undefined });
   }
   if (provider === "openai") {
-    if (!env.OPENAI_MODEL) throw new LlmError("Set OPENAI_MODEL to the model id to use (there is no default).");
+    const model = env.OPENAI_MODEL?.trim();
+    if (!model) throw new LlmError("Set OPENAI_MODEL to the model id to use (there is no default).");
     const { OpenAiLlm } = await import("./llm-openai.ts");
-    return new OpenAiLlm({ model: env.OPENAI_MODEL });
+    return new OpenAiLlm({ model, apiKey: env.OPENAI_API_KEY?.trim() || undefined });
   }
   throw new LlmError(`Unknown LLM_PROVIDER "${provider}" (use "anthropic" or "openai").`);
 }

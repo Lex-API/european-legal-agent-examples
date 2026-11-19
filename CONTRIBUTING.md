@@ -26,3 +26,7 @@ Each Python example gets its own virtual environment: each pins its own dependen
 needs Python 3.11 or later, and access to the `lexapi-llamaindex` repository until its packages are
 published. The two examples share one citation check; a test in the LlamaIndex example fails when the
 copies differ, so change both.
+
+The process-level tests start the TypeScript and GDPR command lines with an explicit environment.
+They set `LEXAPI_EXAMPLES_TEST_IGNORE_DOTENV=1`, a test hook (not a feature) that makes the
+examples skip reading their own `.env`, so a developer's `.env` cannot change a test's result.

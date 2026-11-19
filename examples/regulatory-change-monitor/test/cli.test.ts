@@ -3,12 +3,12 @@
  * as children against the local stub and a local stand-in for the model API.
  */
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { STACK_TRACE, hasOwnEnv, realRunEnv, runExample, startFakeModel } from "../../../offline/process-harness.ts";
-import { startStubServer, type StubReply } from "../../../offline/stub-server.ts";
+import { STACK_TRACE, realRunEnv, runExample, startFakeModel } from "../../../offline/process-harness.ts";
+import { readFixture, startStubServer, type StubReply } from "../../../offline/stub-server.ts";
 import { REFUSALS } from "../../../offline/test-harness.ts";
 
 const MONITOR = "examples/regulatory-change-monitor/src/main.ts";
@@ -96,7 +96,7 @@ test("a malformed state file: one line naming it, exit 2, no request, the file u
   assert.equal(readFileSync(state, "utf8"), "{ not json");
 });
 
-test("missing keys: one line each, exit 2, no request", { skip: hasOwnEnv("regulatory-change-monitor") && "this example has its own .env" }, async () => {
+test("missing keys: one line each, exit 2, no request", async () => {
   const stub = await startStubServer();
   try {
     const result = await runExample(MONITOR, ["--watchlist", WATCHLIST, "--state", statePath()], { LEXAPI_BASE_URL: stub.baseUrl });
@@ -142,7 +142,7 @@ test("webhook setup: both calls succeed", async () => {
   assert.match(result.stdout, /Test delivery: SUCCESS \(HTTP 200\)/);
 });
 
-test("webhook setup: missing settings exit 2 with no request", { skip: hasOwnEnv("regulatory-change-monitor") && "this example has its own .env" }, async () => {
+test("webhook setup: missing settings exit 2 with no request", async () => {
   const stub = await startStubServer();
   try {
     const result = await runExample(SETUP, [], { LEXAPI_BASE_URL: stub.baseUrl });
@@ -155,4 +155,94 @@ test("webhook setup: missing settings exit 2 with no request", { skip: hasOwnEnv
   } finally {
     await stub.close();
   }
+});
+
+// ── state file and watch list ───────────────────────────────────────────
+
+const notSaved = (path: string, code: string) =>
+  `The state file ${path} could not be written (${code}). The digest above was produced, but the state was not saved, so the next run will report the same items again.`;
+
+test("a state file that cannot be written: the digest is printed first, then one line saying so, exit 1", async () => {
+  // Its directory is a regular file, so no user (root included) can write it.
+  const parent = join(dir, `not-a-directory-${++n}`);
+  writeFileSync(parent, "");
+  const state = join(parent, "state.json");
+  const result = await poll(undefined, 1, state);
+  assert.equal(result.code, 1);
+  assert.match(result.stdout, /# Regulatory change digest/);
+  assert.deepEqual(result.stderr.trimEnd().split("\n"), ["LexAPI credits reported for this run: 8.", notSaved(state, "ENOTDIR")]);
+  assert.doesNotMatch(result.stderr, STACK_TRACE);
+});
+
+test("a read-only state directory: the digest is printed, the state is not saved, exit 1", { skip: process.getuid?.() === 0 && "root can write to a read-only directory" }, async () => {
+  const readOnly = mkdtempSync(join(dir, "read-only-"));
+  const state = join(readOnly, "state.json");
+  chmodSync(readOnly, 0o555);
+  try {
+    const result = await poll(undefined, 1, state);
+    assert.equal(result.code, 1);
+    assert.match(result.stdout, /# Regulatory change digest/);
+    assert.deepEqual(result.stderr.trimEnd().split("\n"), ["LexAPI credits reported for this run: 8.", notSaved(state, "EACCES")]);
+    assert.deepEqual(readdirSync(readOnly), []); // no temporary file left behind
+  } finally {
+    chmodSync(readOnly, 0o755);
+  }
+});
+
+test("a state path that is a directory: one line saying so, exit 2, no request", async () => {
+  const state = mkdtempSync(join(dir, "state-dir-"));
+  const result = await poll(undefined, 1, state);
+  assert.equal(result.code, 2);
+  assert.equal(result.stdout, "");
+  assert.equal(result.stderr.trim(), `The state file ${state} is a directory; give --state a file path.`);
+  assert.deepEqual(result.requests, []);
+});
+
+for (const [name, content] of Object.entries({
+  "acts not a list": '{"acts": "x"}',
+  "an act without a celex": '{"acts": [{"label": "GDPR"}]}',
+  "a celex that is not text": '{"acts": [{"celex": 5}]}',
+  "a topic without a query or type": '{"topics": [{"name": "AI"}]}',
+  "not an object": "[]",
+})) {
+  test(`a watch list with ${name}: one line naming the file and what is expected, exit 2, no request`, async () => {
+    const path = join(dir, `watchlist-${++n}.json`);
+    writeFileSync(path, content);
+    const result = await run(MONITOR, undefined, 1, ["--watchlist", path, "--state", statePath()]);
+    assert.equal(result.code, 2);
+    assert.equal(result.stdout, "");
+    const lines = result.stderr.trimEnd().split("\n");
+    assert.equal(lines.length, 1);
+    assert.ok(lines[0]!.startsWith(`The watch list ${path} is not valid: `), lines[0]);
+    assert.match(lines[0]!, /expected \{"acts": \[\{"celex"/);
+    assert.deepEqual(result.requests, []);
+  });
+}
+
+// ── webhook setup: the other two failures ───────────────────────────────
+
+test("webhook setup: a test delivery that FAILED is a failed test: guidance and the delivery's own status, exit 1", async () => {
+  const failed = { status: 200, body: JSON.parse(readFixture("webhook-test.failed.json")) as unknown };
+  const result = await run(SETUP, failed, 2, [], HOOK_URL);
+  assert.equal(result.code, 1);
+  assert.match(result.stdout, /^Webhook wh_fixture_0001 created\.\n/);
+  assert.match(result.stdout, /fixture-secret-not-a-real-secret/);
+  assert.doesNotMatch(result.stdout, /Test delivery/);
+  assert.deepEqual(result.stderr.trimEnd().split("\n"), [
+    'The webhook wh_fixture_0001 was created, but its test delivery failed. Re-test it with client.webhooks.test("wh_fixture_0001") (POST /webhooks/wh_fixture_0001/test), or remove it with client.webhooks.delete("wh_fixture_0001") (DELETE /webhooks/wh_fixture_0001) before running this again.',
+    "Test delivery: FAILED (HTTP 500) - connect ECONNREFUSED 203.0.113.7:443 [2Jretry later lex_***",
+  ]);
+});
+
+test("webhook setup: a create answer without an id prints what came back and says a webhook may exist, exit 1", async () => {
+  const noId = { status: 201, body: { success: true, webhook: { name: "Regulatory change monitor", secret: "fixture-secret-not-a-real-secret" } } };
+  const result = await run(SETUP, noId, 1, [], HOOK_URL);
+  assert.equal(result.code, 1);
+  assert.match(result.stdout, /^The answer to the create, as returned:\n\{/);
+  assert.match(result.stdout, /"secret": "fixture-secret-not-a-real-secret"/);
+  assert.equal(
+    result.stderr.trim(),
+    "LexAPI error INVALID_RESPONSE: The answer to the create has no webhook id, so a webhook may have been created. List your webhooks with client.webhooks.list() (GET /webhooks) before running this again.",
+  );
+  assert.deepEqual(result.requests, ["POST /webhooks"]);
 });

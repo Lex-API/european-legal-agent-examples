@@ -23,17 +23,44 @@ export interface Watchlist {
   days: number;
 }
 
+const SHAPE =
+  'expected {"acts": [{"celex": "<CELEX number>", "label": "<text>"}], "topics": [{"name": "<text>", "query": "<keywords>", "documentType": "<type>"}], "days": <whole number>}';
+
 export function loadWatchlist(path: string): Watchlist {
-  let raw: Partial<Watchlist>;
+  const invalid = (what: string) => new ConfigError(`The watch list ${path} is not valid: ${what}; ${SHAPE}.`);
+  let raw: unknown;
   try {
-    raw = JSON.parse(readFileSync(path, "utf8")) as Partial<Watchlist>;
-  } catch {
-    throw new ConfigError(`The watch list ${path} could not be read as JSON.`);
+    raw = JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    const code = (error as { code?: unknown }).code;
+    throw new ConfigError(`The watch list ${path} could not be read${typeof code === "string" ? ` (${code})` : " as JSON"}.`);
   }
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new ConfigError(`The watch list ${path} is not a JSON object.`);
-  const acts = (raw.acts ?? []).filter((a) => typeof a?.celex === "string" && a.celex.length > 0);
-  const topics = (raw.topics ?? []).filter((t) => typeof t?.name === "string" && (t.query || t.documentType));
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw invalid("it is not a JSON object");
+  const list = raw as Record<string, unknown>;
+  const text = (value: unknown) => typeof value === "string" && value.trim().length > 0;
+  const optionalText = (value: unknown) => value === undefined || text(value);
+  for (const name of ["acts", "topics"]) {
+    if (list[name] !== undefined && !Array.isArray(list[name])) throw invalid(`"${name}" is not a list`);
+  }
+  const acts = (list.acts ?? []) as unknown[];
+  const topics = (list.topics ?? []) as unknown[];
+  for (const act of acts) {
+    const entry = act as Record<string, unknown> | null;
+    if (!entry || typeof entry !== "object" || !text(entry.celex) || !optionalText(entry.label)) {
+      throw invalid('every act needs a "celex" (and may have a "label"), as text');
+    }
+  }
+  for (const topic of topics) {
+    const entry = topic as Record<string, unknown> | null;
+    if (!entry || typeof entry !== "object" || !text(entry.name) || !optionalText(entry.query) || !optionalText(entry.documentType) || !(entry.query || entry.documentType)) {
+      throw invalid('every topic needs a "name" and a "query" and/or a "documentType", as text');
+    }
+  }
+  if (list.days !== undefined && !(Number.isInteger(list.days) && (list.days as number) > 0)) throw invalid('"days" is not a whole number above 0');
   if (acts.length === 0 && topics.length === 0) throw new ConfigError(`${path} lists no acts and no topics.`);
-  const days = Number.isInteger(raw.days) && (raw.days as number) > 0 ? (raw.days as number) : 7;
-  return { acts: acts.map((a) => ({ celex: a.celex, label: a.label ?? a.celex })), topics, days };
+  return {
+    acts: (acts as Array<{ celex: string; label?: string }>).map((a) => ({ celex: a.celex, label: a.label ?? a.celex })),
+    topics: topics as Topic[],
+    days: (list.days as number | undefined) ?? 7,
+  };
 }

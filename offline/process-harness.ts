@@ -1,18 +1,20 @@
 /**
  * Process-level tests: start an example's real command line as a child
  * process against the local stub and a local stand-in for the Anthropic API,
- * and read its exit code, stdout and stderr. The child gets a clean
- * environment, and `offline/no-network.ts` blocks every request that is not
- * to 127.0.0.1 inside it.
+ * and read its exit code, stdout and stderr. The child gets a clean, explicit
+ * environment (an empty HOME, LLM_PROVIDER and the model URL pinned, the
+ * example's .env ignored), and `offline/no-network.ts` blocks every request
+ * that is not to 127.0.0.1 inside it.
  */
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertLocalBaseUrl } from "./guard.ts";
+import { TEST_IGNORE_DOTENV } from "../shared/env.ts";
 import { readFixture } from "./stub-server.ts";
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -23,12 +25,7 @@ export interface RunResult {
   stderr: string;
 }
 
-/** True when an example folder has a `.env` of its own, which the command line would read (tests that need unset keys skip then). */
-export function hasOwnEnv(example: string): boolean {
-  return existsSync(join(ROOT, "examples", example, ".env"));
-}
-
-export function runExample(entry: string, args: string[], env: Record<string, string>): Promise<RunResult> {
+export function runExample(entry: string, args: string[], env: Record<string, string>, onStart?: (pid: number) => void): Promise<RunResult> {
   if (env.LEXAPI_BASE_URL) assertLocalBaseUrl(env.LEXAPI_BASE_URL);
   if (env.ANTHROPIC_BASE_URL) assertLocalBaseUrl(env.ANTHROPIC_BASE_URL);
   // An empty home: no model-provider configuration of this machine is read.
@@ -41,6 +38,10 @@ export function runExample(entry: string, args: string[], env: Record<string, st
       env: {
         PATH: process.env.PATH ?? "",
         HOME: home,
+        // Hermetic: the example's own .env is not read, and the provider and its URL are pinned.
+        [TEST_IGNORE_DOTENV]: "1",
+        LLM_PROVIDER: "anthropic",
+        ANTHROPIC_BASE_URL: "http://127.0.0.1:9", // nothing listens there; tests that need a model pass their own
         // Keep the MCP route's guard on: under a test context it starts the MCP server only against the stub.
         NODE_TEST_CONTEXT: process.env.NODE_TEST_CONTEXT ?? "child",
         ...env,
@@ -48,6 +49,7 @@ export function runExample(entry: string, args: string[], env: Record<string, st
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
+  if (child.pid !== undefined) onStart?.(child.pid);
   let stdout = "";
   let stderr = "";
   child.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString("utf8")));
