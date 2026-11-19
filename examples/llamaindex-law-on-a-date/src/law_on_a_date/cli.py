@@ -48,7 +48,10 @@ from law_on_a_date.pipeline import (
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5-5"
 USER_AGENT_SUFFIX = "european-legal-agent-examples"
 LOCAL_PREFIX = "http://127.0.0.1:"
+DASHBOARD_URL = "https://lex-api.com/dashboard?ref=github-examples"
 FIRST_DATE = datetime.date(1952, 1, 1)  # the earliest date LexAPI answers for
+DATE_ASKED = "Date asked"
+CREDITS_USED = "LexAPI credits used for this run"
 NOTICE_MEANING = (
     "A notice gives only LexAPI's reason for having no text for that date; "
     "check the source for whether the provision applied then."
@@ -129,7 +132,7 @@ def credits_line(calls: Sequence[tuple[str, CallReport]]) -> str:
     total = "not reported" if any(value is None for value in charged) else str(sum(v or 0 for v in charged))
     parts = ", ".join(f"{label}: {shown(report.units_charged)}" for label, report in calls)
     remaining = shown(calls[-1][1].credits_remaining)
-    return f"LexAPI credits used for this run: {total} ({parts}). Credits remaining: {remaining}."
+    return f"{CREDITS_USED}: {total} ({parts}). Credits remaining: {remaining}."
 
 
 def version_lines(passage: Passage, as_of: str) -> list[str]:
@@ -195,7 +198,7 @@ def render(
     show_passages: bool,
     scripted: bool = False,
 ) -> str:
-    lines = [f"Question: {clean(question)}", f"Act: CELEX {celex}", f"Date: {as_of}"]
+    lines = [f"Question: {clean(question)}", f"Act: CELEX {celex}", f"{DATE_ASKED}: {as_of}"]
     if provision:
         lines.append(f"Provision: {clean(provision)}")
     lines += [f"Model: {clean(model_label)}", "", *version_lines(lookup.passage, as_of), ""]
@@ -269,7 +272,7 @@ def create_client(transport: httpx.BaseTransport | None = None) -> LexAPI:
     """
     api_key = os.environ.get("LEXAPI_API_KEY")
     if not api_key:
-        raise ConfigError("LEXAPI_API_KEY is not set. Create a key at https://lex-api.com/dashboard or use --dry-run.")
+        raise ConfigError(f"LEXAPI_API_KEY is not set. Create a key at {DASHBOARD_URL} or use --dry-run.")
     base_url = os.environ.get("LEXAPI_BASE_URL")
     if transport is not None and not (base_url or "").startswith(LOCAL_PREFIX):
         raise RuntimeError(

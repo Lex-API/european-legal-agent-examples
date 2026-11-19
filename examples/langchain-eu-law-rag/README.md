@@ -97,6 +97,8 @@ mock LexAPI and a fake model, so it stays in step with the adapter.
   prints how many passages have no text for that date. A notice gives only LexAPI's reason for
   having no text for that date; check the source for whether the provision applied then. A resolved passage's source line says `version for <date>: <CELEX>`.
 - Without `--as-of`, nothing is said about the text for any date.
+- Dates are checked before any request: `YYYY-MM-DD`, a real calendar day, from 1952-01-01 to today
+  (UTC).
 
 ## Install
 
@@ -136,10 +138,13 @@ Exit codes:
 
 - 0: an answer, or "no passages" / "no text", was printed.
 - 1: LexAPI refused the request (for example 402, credits exhausted, or 403, payment past due) or
-  its answer could not be read; the API's message is printed. Also when the model call failed or
-  its reply was not used; then the credits line of the search, which was charged, is printed first.
-- 2: a usage or configuration error: an empty question, a malformed `--as-of` date, a missing
-  `LEXAPI_API_KEY` or `ANTHROPIC_API_KEY`, or `--dry-run` without the repository's fixtures.
+  its answer could not be read; the API's message is printed on one line, in the adapter's form
+  (`LexAPI error <code> (HTTP <status>): <message>`, then the billing link, when the credits reset
+  or how long to wait, when the API gives them). Also when the model call failed or its reply was
+  not used; then the credits line of the search, which was charged, is printed first.
+- 2: a usage or configuration error: an empty question, a malformed, impossible or future `--as-of`
+  date or one before 1952-01-01, a missing `LEXAPI_API_KEY` or `ANTHROPIC_API_KEY`, or `--dry-run`
+  without the repository's fixtures.
 
 ## Cost
 
@@ -165,9 +170,10 @@ content. Covered: the request sent (query, `limit`, `include`, `asOf`), `--as-of
 validation, every Source line in the prompt and no text of a withheld passage or of another act,
 the prompt's rules, the source list against the passages, the withheld, reason, left-out and
 credits lines (and "not reported"), no model call when no passage has text, the citation check,
-unusable replies and model-provider errors, 402 and 403 exit codes and messages, sanitised output,
-the API key never printed, the model settings, the client closed after the run, the dry run, and
-the snippet in "The core".
+unusable replies and model-provider errors, 401/402/403/429 and unreadable answers, sanitised output,
+the API key never printed, the model settings, the client closed after the run, the dry run, the
+snippet in "The core", the sample output below, and the output lines shared with the LlamaIndex
+example.
 Not covered by any test: the live API and a real model.
 Until the adapter's repository is public, these tests run locally only (`pip install -e .` needs
 access to it); the CI job checks whether it is reachable and skips with a notice when it is not.
@@ -184,11 +190,12 @@ placeholders from `offline/fixtures`, and the answer is scripted, not written by
 fixture forces the second passage to be withheld, to show what a notice looks like.
 
 ```text
+$ dora-rag --dry-run --show-passages --as-of 2025-01-17 "What does DORA say about ICT risk management frameworks?"
 DRY RUN - LexAPI was replaced by a local mock and the model by a scripted reply.
 The passages given to the model are synthetic placeholders, not the wording of any act.
 
 Question: What does DORA say about ICT risk management frameworks?
-Text asked for: 2025-01-17
+Date asked: 2025-01-17
 Model: scripted (no model was called)
 
 Passages given to the model:
@@ -201,7 +208,7 @@ Source: CELEX 32022R2554, art_5, version for 2025-01-17: 32022R2554, https://eur
 [No text: CELEX 32022R2554 art_6 is not established as the text for 2025-01-17 (reason: fetch_timeout).]
 Source: CELEX 32022R2554, art_6, text for 2025-01-17 not established, https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32022R2554
 
-Answer (written by the model from the passages above):
+Answer (scripted for this dry run; from the passages above):
 The first passage, in the version listed for the date asked, describes a placeholder body that keeps a fixture framework under review [1]. LexAPI has no text of the second provision for that date, so it is not described here [2].
 
 Sources:
@@ -211,7 +218,7 @@ Sources:
 Withheld for 2025-01-17: 1 passage(s) have no text for that date and arrived as a notice.
 A notice gives only LexAPI's reason for having no text for that date; check the source for whether the provision applied then.
 Left out: 1 hit(s) from acts other than DORA.
-LexAPI credits used for this call: 5. Credits remaining: 495.
+LexAPI credits used for this run: 5. Credits remaining: 495.
 
 Research support, not legal advice. The answer is model-written and may misread the passages; check it against the sources.
 ```

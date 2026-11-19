@@ -23,7 +23,8 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.documents import Document
 from langchain_core.language_models import BaseChatModel
 from langchain_lexapi import LexAPILegislationRetriever, RetrievalReport
-from lexapi import LexAPI, LexAPIError, PaymentPastDueError
+from langchain_lexapi.tools import tool_error
+from lexapi import LexAPI, LexAPIError
 
 from dora_rag import offline
 from dora_rag.rag import (
@@ -41,6 +42,10 @@ from dora_rag.rag import (
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5-5"
 USER_AGENT_SUFFIX = "european-legal-agent-examples"
 LOCAL_PREFIX = "http://127.0.0.1:"
+DASHBOARD_URL = "https://lex-api.com/dashboard?ref=github-examples"
+FIRST_DATE = datetime.date(1952, 1, 1)  # the earliest date LexAPI answers for
+DATE_ASKED = "Date asked"
+CREDITS_USED = "LexAPI credits used for this run"
 NOTICE_MEANING = (
     "A notice gives only LexAPI's reason for having no text for that date; "
     "check the source for whether the provision applied then."
@@ -69,14 +74,24 @@ def clean(text: str, *, keep_newlines: bool = False) -> str:
     return "".join(kept).strip()
 
 
-def as_of_date(value: str) -> str:
-    """argparse type for --as-of: a real calendar date written YYYY-MM-DD."""
+def today() -> datetime.date:
+    """Today in UTC: LexAPI answers for dates up to today."""
+    return datetime.datetime.now(datetime.UTC).date()
+
+
+def date_arg(value: str) -> str:
+    """argparse type for a date: a real calendar day written YYYY-MM-DD, from 1952-01-01 to today (UTC)."""
     try:
-        if _DATE.match(value):
-            return datetime.date.fromisoformat(value).isoformat()
+        day = datetime.date.fromisoformat(value) if _DATE.match(value) else None
     except ValueError:
-        pass
-    raise argparse.ArgumentTypeError(f"expected a date written YYYY-MM-DD, got {value!r}")
+        day = None
+    if day is None:
+        raise argparse.ArgumentTypeError(f"expected a date written YYYY-MM-DD, got {value!r}")
+    if day > today():
+        raise argparse.ArgumentTypeError(f"{value} is in the future; LexAPI answers for dates up to today (UTC)")
+    if day < FIRST_DATE:
+        raise argparse.ArgumentTypeError(f"{value} is before {FIRST_DATE}, the earliest date LexAPI answers for")
+    return day.isoformat()
 
 
 def question_text(value: str) -> str:
@@ -90,10 +105,16 @@ def credits_line(report: RetrievalReport) -> str:
     def shown(value: int | None) -> str:
         return "not reported" if value is None else str(value)
 
-    return (
-        f"LexAPI credits used for this call: {shown(report.units_charged)}. "
-        f"Credits remaining: {shown(report.credits_remaining)}."
-    )
+    return f"{CREDITS_USED}: {shown(report.units_charged)}. Credits remaining: {shown(report.credits_remaining)}."
+
+
+def answer_heading(*, show_passages: bool, scripted: bool) -> str:
+    if scripted:
+        where = "from the passages above" if show_passages else "passages not printed, see --show-passages"
+        return f"Answer (scripted for this dry run; {where}):"
+    if show_passages:
+        return "Answer (written by the model from the passages above):"
+    return "Answer (written by the model from the passages given to it; see --show-passages):"
 
 
 def source_line(n: int, doc: Document) -> str:
@@ -116,16 +137,19 @@ def render(
     answer_text: str | None,
     model_label: str,
     show_passages: bool,
+    scripted: bool = False,
 ) -> str:
     lines = [f"Question: {clean(question)}"]
     if as_of:
-        lines.append(f"Text asked for: {as_of}")
+        lines.append(f"{DATE_ASKED}: {as_of}")
     lines += [f"Model: {clean(model_label)}", ""]
     if show_passages and documents:
         lines += ["Passages given to the model:", "", clean(format_passages(documents), keep_newlines=True), ""]
     if answer_text is not None:
-        where = "above" if show_passages else "given to it (not printed; see --show-passages)"
-        lines += [f"Answer (written by the model from the passages {where}):", clean(answer_text, keep_newlines=True)]
+        lines += [
+            answer_heading(show_passages=show_passages, scripted=scripted),
+            clean(answer_text, keep_newlines=True),
+        ]
     elif documents:
         lines.append("None of the passages has text, so no model was called.")
     else:
@@ -166,7 +190,7 @@ def create_client(transport: httpx.BaseTransport | None = None) -> LexAPI:
     """
     api_key = os.environ.get("LEXAPI_API_KEY")
     if not api_key:
-        raise ConfigError("LEXAPI_API_KEY is not set. Create a key at https://lex-api.com/dashboard or use --dry-run.")
+        raise ConfigError(f"LEXAPI_API_KEY is not set. Create a key at {DASHBOARD_URL} or use --dry-run.")
     base_url = os.environ.get("LEXAPI_BASE_URL")
     if transport is not None and not (base_url or "").startswith(LOCAL_PREFIX):
         raise RuntimeError(
@@ -187,12 +211,17 @@ def create_chat_model() -> tuple[BaseChatModel, str]:
 
 
 def one_line(text: str) -> str:
-    """A provider's error text on one line, without control characters or any key from the environment."""
+    """Error text on one line, without control characters or any key from the environment."""
     for name in ("ANTHROPIC_API_KEY", "LEXAPI_API_KEY"):
         if secret := os.environ.get(name):
             text = text.replace(secret, "[key]")
     text = " ".join(clean(text).split())
     return text if len(text) <= 300 else text[:300] + "..."
+
+
+def refusal(error: LexAPIError) -> str:
+    """A LexAPI refusal or unreadable answer, in the adapter's one-line form (its tools' error text)."""
+    return one_line(str(tool_error(error)))
 
 
 def model_failure(error: AnswerError | ModelCallError) -> str:
@@ -216,7 +245,7 @@ def main(
     out = out or sys.stdout
     parser = argparse.ArgumentParser(prog="dora-rag", description=(__doc__ or "").splitlines()[0])
     parser.add_argument("question", type=question_text)
-    parser.add_argument("--as-of", type=as_of_date, metavar="YYYY-MM-DD", help="ask for the text for this date")
+    parser.add_argument("--as-of", type=date_arg, metavar="YYYY-MM-DD", help="ask for the text for this date")
     parser.add_argument("--dry-run", action="store_true", help="synthetic fixtures and a scripted reply, no keys")
     parser.add_argument("--show-passages", action="store_true", help="also print the passages given to the model")
     args = parser.parse_args(argv)
@@ -245,10 +274,7 @@ def main(
         try:
             documents, report = retrieve(retriever, args.question, args.as_of)
         except LexAPIError as error:
-            status = f" (HTTP {error.status})" if error.status is not None else ""
-            print(one_line(f"LexAPI error{status}: {error.code}: {error.message}"), file=sys.stderr)
-            if isinstance(error, PaymentPastDueError) and error.billing_url:
-                print(f"Billing: {one_line(error.billing_url)}", file=sys.stderr)
+            print(refusal(error), file=sys.stderr)
             return 1
         try:
             answer_text = answer(args.question, documents, chat_model, args.as_of)
@@ -269,6 +295,7 @@ def main(
         answer_text=answer_text,
         model_label=model_label,
         show_passages=args.show_passages,
+        scripted=args.dry_run,
     )
     print(text, file=out)
     return 0

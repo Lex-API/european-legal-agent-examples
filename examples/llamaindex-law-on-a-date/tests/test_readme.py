@@ -99,6 +99,21 @@ def test_the_core_snippet_calls_no_model_without_text(monkeypatch: pytest.Monkey
     assert llm.seen == []
 
 
+NOTICE_RUN = ["--dry-run", "--show-passages", "--as-of", "2019-06-01", "--provision", "art_17", QUESTION]
+
+
+def test_the_notice_block_is_what_the_dry_run_gives_the_model() -> None:
+    readme = README.read_text(encoding="utf-8")
+    section = readme.split("### What the model sees for a notice\n", 1)[1].split("\n## ", 1)[0]
+    command = "law-on-a-date " + " ".join(f'"{a}"' if " " in a else a for a in NOTICE_RUN)
+    assert f"`{command}`" in " ".join(section.split())
+    block = section.split("```text\n", 1)[1].split("\n```", 1)[0]
+    out = io.StringIO()
+    assert cli.main(NOTICE_RUN, out=out) == 0
+    passages = out.getvalue().split("Passages given to the model:\n\n", 1)[1].split("\n\nAnswer (", 1)[0]
+    assert block == "[3]\n" + passages.split("\n\n[3]\n", 1)[1]
+
+
 @pytest.mark.parametrize(
     "args",
     [

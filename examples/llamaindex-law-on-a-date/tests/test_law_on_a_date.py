@@ -98,7 +98,7 @@ def test_a_version_lookup_then_one_search_for_the_date(stub: Stub, capsys: pytes
         {"query": QUESTION, "limit": 10, "include": ["text"], "asOf": EARLY},
     ]
     assert all(r.headers["x-api-key"] == TEST_KEY for r in stub.requests)
-    assert f"Date: {EARLY}" in out and "Provision: art_17" in out
+    assert f"Date asked: {EARLY}" in out and "Provision: art_17" in out
     assert "in force" not in out
 
 
@@ -185,7 +185,7 @@ def test_the_provision_node_is_shaped_like_the_retrievers(stub: Stub, capsys: py
     assert "[SYNTHETIC FIXTURE - not the text of the act] Placeholder provision G1" in first
 
 
-def passage(status: str, part: str = "art_17", text: str = "[SYNTHETIC FIXTURE] t") -> NodeWithScore:
+def passage(status: str, part: str = "art_17", text: str = "[SYNTHETIC FIXTURE] t", **extra: Any) -> NodeWithScore:
     body = text if status == "provided" else "[No text: placeholder notice]"
     metadata = {
         "text_status": status,
@@ -193,8 +193,84 @@ def passage(status: str, part: str = "art_17", text: str = "[SYNTHETIC FIXTURE] 
         "article_ref": part,
         "as_of": EARLY,
         "language": "en",
+        **extra,
     }
     return NodeWithScore(node=TextNode(text=f"{body}\nSource: placeholder", metadata=metadata), score=None)
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
+        ({"part": "art_17"}, {"part": "art_17a"}),
+        ({"part": "17"}, {"part": "art_17a"}),
+        ({"part": "rct_17"}, {"part": "art_17"}),
+        ({"part": "anx_I"}, {"part": "art_1"}),
+        ({"part": "art_1"}, {"part": "art_10"}),
+        ({"part": "art_17"}, {"part": "art_17", "language": "de"}),
+        ({"part": "art_17"}, {"part": "art_17", "cite_celex": "32022R2554"}),
+    ],
+)
+def test_different_provisions_are_never_the_same_passage(first: dict[str, Any], second: dict[str, Any]) -> None:
+    provision, other = passage("withheld", **first), passage("provided", **second)
+    assert pipeline._passage_key(provision) != pipeline._passage_key(other)
+    combined = pipeline.combine(provision, [other])
+    assert len(combined) == 2 and combined[0] is provision and combined[1] is other
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
+        ({"part": "art_17"}, {"part": "17"}),
+        ({"part": "art_17a"}, {"part": "Article 17A"}),
+        ({"part": "art_17"}, {"part": "Art. 17"}),
+        # A consolidated version and the act as published, with the same act to cite.
+        (
+            {"celex": "02016R0679-20990101", "consolidated": True},
+            {"celex": "32016R0679", "consolidated": False},
+        ),
+    ],
+)
+def test_the_same_provision_is_the_same_passage(first: dict[str, Any], second: dict[str, Any]) -> None:
+    provision, copy = passage("withheld", **first), passage("provided", **second)
+    assert pipeline._passage_key(provision) == pipeline._passage_key(copy)
+    assert [n is copy for n in pipeline.combine(provision, [copy])] == [True]
+
+
+def test_two_texts_of_the_provision_from_different_versions_are_both_kept() -> None:
+    lookup = passage("provided", version_celex="32016R0679")
+    found = passage("provided", version_celex="02016R0679-20990101", celex="02016R0679-20990101")
+    other = passage("provided", part="art_21")
+    combined = pipeline.combine(lookup, [found, other])
+    assert len(combined) == 3 and combined[0] is lookup and combined[1] is found and combined[2] is other
+    # The same version, or one copy without text, is still one passage.
+    same = passage("provided", version_celex="32016R0679")
+    assert [n is lookup for n in pipeline.combine(lookup, [same])] == [True]
+    notice = passage("withheld", version_celex="02016R0679-20990101")
+    assert [n is lookup for n in pipeline.combine(lookup, [notice])] == [True]
+    notice_first = passage("withheld", version_celex="02016R0679-20990101")
+    assert [n is found for n in pipeline.combine(notice_first, [found])] == [True]
+
+
+def test_a_search_text_from_another_version_is_kept_beside_the_provision(capsys: pytest.CaptureFixture[str]) -> None:
+    def reply(body: dict[str, Any]) -> tuple[int, Any]:
+        _status, payload = add_art17(as_of_resolved=True)(body)
+        version = offline.read_fixture("legislation-as-of.gdpr.consolidated.json")
+        payload["results"][0].update(
+            law_id=version["asOfVersion"]["celex"],
+            consolidated=True,
+            baseCelex="32016R0679",
+            asOfVersion=version["asOfVersion"],
+        )
+        return 200, payload
+
+    llm = scripted(ANSWER_3 + " Placeholder [4].")
+    code, out, _ = ask(Stub(replies={"semantic": reply}), llm, capsys=capsys)
+    assert code == 0
+    _system, human = prompt_text(llm)
+    assert "Placeholder provision G1" in human and "RETRIEVED-ART-17-TEXT" in human
+    assert human.count("Source: ") == 4
+    assert sources_map(out)[0] == f"[1] {expected_citations(EARLY)[0]}"
+    assert sources_map(out)[1].startswith("[2] CELEX 32016R0679, art_17, consolidated text 02016R0679-20990101")
 
 
 def test_combine_keeps_the_better_of_two_copies_in_the_provisions_place() -> None:
@@ -799,7 +875,10 @@ def test_a_missing_lexapi_key_exits_2(
 ) -> None:
     monkeypatch.delenv("LEXAPI_API_KEY")
     assert cli.main(["--as-of", EARLY, QUESTION], transport=stub.transport(), llm=scripted(ANSWER)) == 2
-    assert "LEXAPI_API_KEY is not set" in capsys.readouterr().err
+    assert capsys.readouterr().err == (
+        "LEXAPI_API_KEY is not set. Create a key at https://lex-api.com/dashboard?ref=github-examples"
+        " or use --dry-run.\n"
+    )
     assert stub.requests == []
 
 

@@ -64,7 +64,8 @@ agent; see the adapter's README.
   Official Journal, without later corrigenda.
 - `--provision` addresses whole articles, annexes and recitals, not paragraphs or points.
 - For a date before the act existed, a real run prints `Version for <date>: not established by
-  LexAPI (reason: not_yet_adopted)`.
+  LexAPI (reason: not_yet_adopted)`, or `in_force_dates_unknown` when LexAPI does not know the
+  act's dates.
 - `--compare` compares the versions listed for two dates, not their texts. It says whether the same
   version is listed for both; it does not say what changed.
 - It only sees the provision you name and what one search returned: at most 10 hits, of which only
@@ -94,7 +95,8 @@ The pipeline is two explicit steps, not an agent: the model never chooses which 
    the date LexAPI did not establish stays as a notice node (the adapter's defaults,
    `unresolved="withhold"`, `emit_withheld=True`). When the search returns the provision too, only
    one copy is kept, in the provision's place: the one with text, by the adapters' rule (a text over a
-   labelled latest text over a notice), whichever way `--provision` was written.
+   labelled latest text over a notice), whichever way `--provision` was written. Two texts of the
+   provision from different versions are both kept.
 3. **What the model sees.** Each passage is `node.get_content(MetadataMode.LLM)`: the node's
    metadata lines (`text_status`, `cite_celex`, `consolidated`, `as_of`, `as_of_resolved`,
    `as_of_reason`, ...; the adapter hides the citation, ids and score from this view), a blank line,
@@ -223,7 +225,7 @@ LexAPI credits per run, from the adapters' documentation and the
 | Step | Credits |
 | --- | --- |
 | Version lookup, without `--provision` | 1 |
-| Version lookup with `--provision` | 1 when no text is fetched; 4, or 5 when fetched live, when the provision's text is fetched; 1 if the fetch fails or finds no text |
+| Version lookup with `--provision` | 1; when the provision's text has to be fetched, 4 (5 when fetched live from EUR-Lex), whatever the answer; 1 if that fetch fails or finds no text |
 | Semantic legislation search with a date | 5, plus up to 3 version fetches at 0-5 each |
 
 So a question costs **6-21 credits** without `--provision` and **6-25** with it, in 2 requests.
@@ -247,11 +249,14 @@ another act, the metadata lines the model sees, the prompt's rules, the version 
 consolidated, not established), compare's same / different / not compared results and date order,
 the source list against the passages, the withheld, reason, left-out and credits lines (and "not
 reported"), which copy is kept when the search returns the provision too (for each spelling of
-`--provision`), the tool's event read from the adapter's dispatcher and its handler removed after
-each lookup, no model call when no passage has text, the citation check (the LangChain example's
+`--provision`), that other provisions, languages, acts and versions are never taken for that copy,
+the tool's event read from the adapter's dispatcher and its handler removed after each lookup, no
+model call when no passage has text, the citation check (the LangChain example's
 table, and a test that the two examples' check is the same code), unusable replies and model-provider
 errors, 401/402/403/429/500 and unreadable answers, sanitised output, the API key never printed, the
-model settings, the client closed after the run, the dry run (and its refusal of another act), and the snippet in "The core".
+model settings, the client closed after the run, the dry run (and its refusal of another act), the
+snippet in "The core", the sample outputs and the notice block above, and the output lines shared
+with the LangChain example.
 Not covered by any test: the live API and a real model.
 Until the adapters' repository is public, these tests run locally only (`pip install -e .` needs
 access to it); the CI job checks whether it is reachable and skips with a notice when it is not.
@@ -276,7 +281,7 @@ The texts and versions are synthetic placeholders, not the wording or the versio
 
 Question: What did Article 17 of the GDPR say about erasure?
 Act: CELEX 32016R0679
-Date: 2019-06-01
+Date asked: 2019-06-01
 Provision: art_17
 Model: scripted (no model was called)
 

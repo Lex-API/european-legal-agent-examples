@@ -1,7 +1,8 @@
-"""The snippet in the README's "The core" section runs, against the mock LexAPI and a fake model."""
+"""The README: the snippet in "The core" runs, against the mock LexAPI and a fake model; the sample output is real."""
 
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,8 @@ import langchain_lexapi
 import pytest
 from conftest import TEST_KEY, Stub, fake_model
 from lexapi import LexAPI
+
+from dora_rag import cli
 
 README = Path(__file__).resolve().parents[1] / "README.md"
 
@@ -59,3 +62,24 @@ def test_the_core_snippet_runs(stub: Stub, monkeypatch: pytest.MonkeyPatch, caps
         "https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32022R2554",
         "Credits used: 5 remaining: 495",
     ]
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        [
+            "--dry-run",
+            "--show-passages",
+            "--as-of",
+            "2025-01-17",
+            "What does DORA say about ICT risk management frameworks?",
+        ],
+    ],
+)
+def test_the_sample_outputs_are_what_the_dry_run_prints(args: list[str]) -> None:
+    command = "$ dora-rag " + " ".join(f'"{a}"' if " " in a else a for a in args) + "\n"
+    readme = README.read_text(encoding="utf-8")
+    start = readme.index(command) + len(command)
+    out = io.StringIO()
+    assert cli.main(args, out=out) == 0
+    assert readme[start : readme.index("\n```", start)] == out.getvalue().rstrip("\n")

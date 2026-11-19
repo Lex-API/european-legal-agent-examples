@@ -5,11 +5,12 @@ name lookups for anything but 127.0.0.1 fail, httpx's real transports fail,
 and LangSmith clients cannot be created; tracing is off and no model key is
 set. LexAPI is answered in-process by an ``httpx.MockTransport`` on an
 explicit ``http://127.0.0.1:`` base URL, and the model is a fake chat model.
-Every fixture body is synthetic.
+Every fixture body is synthetic. "Today" is fixed.
 """
 
 from __future__ import annotations
 
+import datetime
 import json
 import os
 import socket
@@ -37,6 +38,7 @@ for _name in ("LANGCHAIN_API_KEY", "LANGSMITH_API_KEY", "LANGCHAIN_ENDPOINT", "L
 BASE_URL = "http://127.0.0.1:9/api/v1"
 TEST_KEY = "lex_offline_test_key_do_not_print_0123456789"
 OFFLINE_ERROR = "Offline tests blocked a real network request"
+TODAY = datetime.date(2026, 6, 30)
 
 _real_connect = socket.socket.connect
 _real_getaddrinfo = socket.getaddrinfo
@@ -80,6 +82,7 @@ def _env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(name, raising=False)
     # A developer's .env must not leak into the tests.
     monkeypatch.setattr(cli, "load_env_file", lambda path: None)
+    monkeypatch.setattr(cli, "today", lambda: TODAY)
 
 
 search_reply = offline.search_reply

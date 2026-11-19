@@ -77,7 +77,7 @@ def test_one_search_for_dora_articles_without_a_date(stub: Stub, capsys: pytest.
     # No date was asked, so nothing is said about a date.
     assert "Withheld" not in out
     assert "in force" not in out
-    assert "Text asked for" not in out
+    assert "Date asked" not in out
 
 
 def test_as_of_is_sent_with_the_search(stub: Stub, capsys: pytest.CaptureFixture[str]) -> None:
@@ -87,20 +87,40 @@ def test_as_of_is_sent_with_the_search(stub: Stub, capsys: pytest.CaptureFixture
     assert stub.bodies() == [
         {"query": f"{rag.DORA_CONTEXT}: {QUESTION}", "limit": 10, "include": ["text"], "asOf": AS_OF}
     ]
-    assert f"Text asked for: {AS_OF}" in out
+    assert out.splitlines()[1] == f"Date asked: {AS_OF}"
 
 
-@pytest.mark.parametrize("value", ["2025-02-30", "17/01/2025", "2025-1-17", "2025-01-17T00:00", "", "tomorrow"])
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        ("2025-02-30", "expected a date written YYYY-MM-DD, got '2025-02-30'"),
+        ("17/01/2025", "expected a date written YYYY-MM-DD, got '17/01/2025'"),
+        ("2025-1-17", "expected a date written YYYY-MM-DD, got '2025-1-17'"),
+        ("2025-01-17T00:00", "expected a date written YYYY-MM-DD, got '2025-01-17T00:00'"),
+        ("", "expected a date written YYYY-MM-DD, got ''"),
+        ("tomorrow", "expected a date written YYYY-MM-DD, got 'tomorrow'"),
+        ("2026-07-01", "2026-07-01 is in the future; LexAPI answers for dates up to today (UTC)"),
+        ("2099-06-01", "2099-06-01 is in the future; LexAPI answers for dates up to today (UTC)"),
+        ("1951-12-31", "1951-12-31 is before 1952-01-01, the earliest date LexAPI answers for"),
+    ],
+)
 def test_an_invalid_as_of_is_refused_before_any_request(
-    stub: Stub, value: str, capsys: pytest.CaptureFixture[str]
+    stub: Stub, value: str, message: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
     model = fake_model(ANSWER)
     with pytest.raises(SystemExit) as exit_info:
         cli.main(["--as-of", value, QUESTION], transport=stub.transport(), chat_model=model)
     assert exit_info.value.code == 2
-    assert "expected a date written YYYY-MM-DD" in capsys.readouterr().err
+    assert capsys.readouterr().err.rstrip("\n").endswith(f"argument --as-of: {message}")
     assert stub.requests == []
     assert model.seen == []
+
+
+@pytest.mark.parametrize("value", ["1952-01-01", "2026-06-30"])
+def test_today_and_the_first_date_are_accepted(stub: Stub, value: str, capsys: pytest.CaptureFixture[str]) -> None:
+    code, _out, _err = run(stub, fake_model(ANSWER_AS_OF), "--as-of", value, capsys=capsys)
+    assert code == 0
+    assert stub.bodies()[0]["asOf"] == value
 
 
 @pytest.mark.parametrize("question", ["", "   ", "\n\t "])
@@ -170,14 +190,14 @@ def test_answer_then_a_citation_map_that_matches_the_passages(stub: Stub, capsys
 
     assert code == 0
     assert out.index(ANSWER) < out.index("Sources:")
-    assert "Answer (written by the model from the passages given to it (not printed; see --show-passages)):" in out
+    assert "Answer (written by the model from the passages given to it; see --show-passages):" in out
     assert "Passages given to the model" not in out
     assert "Placeholder provision" not in out  # no passage text is printed by default
     assert sources_map(out) == [f"[{n}] {c}" for n, c in enumerate(expected_citations(None), start=1)]
     cited = {int(n) for n in re.findall(r"\[(\d+)\]", ANSWER)}
     assert cited <= set(range(1, len(sources_map(out)) + 1))
     assert "Left out: 1 hit(s) from acts other than DORA." in out
-    assert "LexAPI credits used for this call: 5. Credits remaining: 495." in out
+    assert "LexAPI credits used for this run: 5. Credits remaining: 495." in out
     assert "not legal advice" in out
 
 
@@ -207,7 +227,7 @@ def test_withheld_count_reason_and_credits_are_printed(stub: Stub, capsys: pytes
         f"[1] {citations[0]}",
         f"[2] {citations[1]} - notice only, no text was given to the model (reason: fetch_timeout)",
     ]
-    assert "LexAPI credits used for this call: 5. Credits remaining: 495." in out
+    assert "LexAPI credits used for this run: 5. Credits remaining: 495." in out
     assert "UNRESOLVED-LATEST" not in out
 
 
@@ -244,7 +264,7 @@ def test_credits_missing_from_the_response_print_as_not_reported(capsys: pytest.
 
     code, out, _ = run(Stub(reply=reply), fake_model(ANSWER), capsys=capsys)
     assert code == 0
-    assert "LexAPI credits used for this call: not reported. Credits remaining: not reported." in out
+    assert "LexAPI credits used for this run: not reported. Credits remaining: not reported." in out
 
 
 def test_no_dora_passages_means_no_model_call(capsys: pytest.CaptureFixture[str]) -> None:
@@ -393,7 +413,7 @@ def test_an_unusable_reply_exits_1_with_the_credits_and_a_message(
     assert code == 1
     assert out == ""
     lines = err.strip().splitlines()
-    assert lines[0] == "LexAPI credits used for this call: 5. Credits remaining: 495."
+    assert lines[0] == "LexAPI credits used for this run: 5. Credits remaining: 495."
     assert len(lines) == 2 and lines[1].startswith("The model's reply was not used:") and message in lines[1]
     assert "Traceback" not in err
 
@@ -428,7 +448,7 @@ def test_a_model_provider_error_exits_1_without_a_traceback(
     assert code == 1
     assert out == ""
     lines = err.strip().splitlines()
-    assert lines[0] == "LexAPI credits used for this call: 5. Credits remaining: 495."
+    assert lines[0] == "LexAPI credits used for this run: 5. Credits remaining: 495."
     assert len(lines) == 2 and lines[1].startswith("The model provider returned an error (")
     assert "Traceback" not in err and "\x1b" not in err and TEST_KEY not in err
 
@@ -459,15 +479,32 @@ PAYMENT_PAST_DUE = {
 }
 
 
+CREDITS_EXHAUSTED_WITH_RESET = {
+    "success": False,
+    "error": {
+        "code": "CREDITS_EXHAUSTED",
+        "message": "Credit pool exhausted",
+        "details": {"operation": "semantic_legislation", "weight": 5, "available": 2},
+    },
+    "resetsAt": "2026-07-01T00:00:00Z",
+}
+
+
 @pytest.mark.parametrize(
     ("status", "body", "printed"),
     [
-        (402, CREDITS_EXHAUSTED, "LexAPI error (HTTP 402): CREDITS_EXHAUSTED: Credit pool exhausted\n"),
+        (402, CREDITS_EXHAUSTED, "LexAPI error CREDITS_EXHAUSTED (HTTP 402): Credit pool exhausted.\n"),
+        (
+            402,
+            CREDITS_EXHAUSTED_WITH_RESET,
+            "LexAPI error CREDITS_EXHAUSTED (HTTP 402): Credit pool exhausted."
+            " Credits reset at 2026-07-01T00:00:00Z.\n",
+        ),
         (
             403,
             PAYMENT_PAST_DUE,
-            "LexAPI error (HTTP 403): PAYMENT_PAST_DUE: Payment past due: Your subscription payment"
-            " failed, so API requests are refused.\nBilling: https://lex-api.com/dashboard#billing\n",
+            "LexAPI error PAYMENT_PAST_DUE (HTTP 403): Payment past due: Your subscription payment"
+            " failed, so API requests are refused. Billing: https://lex-api.com/dashboard#billing\n",
         ),
     ],
 )
@@ -497,7 +534,23 @@ def test_a_key_echoed_by_the_api_is_masked(capsys: pytest.CaptureFixture[str]) -
     code, _out, err = run(Stub(reply=lambda _b: (401, body)), fake_model(ANSWER), capsys=capsys)
     assert code == 1
     assert TEST_KEY not in err
-    assert "Invalid key [key]" in err
+    assert err == "LexAPI error UNAUTHORIZED (HTTP 401): Invalid key lex_***.\n"
+
+
+def test_a_retry_delay_from_the_api_is_on_the_same_line(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("lexapi.client.time.sleep", lambda seconds: None)  # the SDK retries a 429
+    body = {"success": False, "error": {"code": "RATE_LIMITED", "message": "Too many requests"}, "retryAfter": 7}
+    code, out, err = run(Stub(reply=lambda _b: (429, body)), fake_model(ANSWER), capsys=capsys)
+    assert code == 1 and out == ""
+    assert err == "LexAPI error RATE_LIMITED (HTTP 429): Too many requests. Retry after 7 s.\n"
+
+
+def test_an_unreadable_answer_prints_the_adapters_fixed_line(capsys: pytest.CaptureFixture[str]) -> None:
+    code, out, err = run(Stub(reply=lambda _b: (200, {"success": True})), fake_model(ANSWER), capsys=capsys)
+    assert code == 1 and out == ""
+    assert err == "LexAPI error INVALID_RESPONSE (HTTP 200): The answer could not be read.\n"
 
 
 def test_the_key_is_never_printed(capsys: pytest.CaptureFixture[str]) -> None:
@@ -521,7 +574,10 @@ def test_a_missing_lexapi_key_exits_2(
 ) -> None:
     monkeypatch.delenv("LEXAPI_API_KEY")
     assert cli.main([QUESTION], transport=stub.transport(), chat_model=fake_model(ANSWER)) == 2
-    assert "LEXAPI_API_KEY is not set" in capsys.readouterr().err
+    assert capsys.readouterr().err == (
+        "LEXAPI_API_KEY is not set. Create a key at https://lex-api.com/dashboard?ref=github-examples"
+        " or use --dry-run.\n"
+    )
     assert stub.requests == []
 
 
@@ -612,7 +668,8 @@ def test_the_dry_run_needs_no_keys_and_turns_tracing_off(
     text = out.getvalue()
     assert text.startswith(offline.DRY_RUN_BANNER)
     assert "Model: scripted (no model was called)" in text
-    assert sources_map(text) and "LexAPI credits used for this call: 5." in text
+    assert "\nAnswer (scripted for this dry run; passages not printed, see --show-passages):\n" in text
+    assert sources_map(text) and "LexAPI credits used for this run: 5." in text
     assert "lex_dry_run_no_key" not in text + capsys.readouterr().err
 
 
