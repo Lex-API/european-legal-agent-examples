@@ -1,6 +1,6 @@
 """EU law for a date, answered from cited passages, with LlamaIndex and LexAPI - command line.
 
-law-on-a-date --as-of 2019-06-01 --provision art_17 "What did Article 17 say about erasure?"
+law-on-a-date --as-of 2019-06-01 --provision art_17 "What did Article 17 of the GDPR say about erasure?"
 law-on-a-date --compare 2018-05-25 2024-01-01      (which version is listed for each date)
 law-on-a-date --dry-run ...                        (no keys, synthetic fixtures)
 """
@@ -35,6 +35,7 @@ from law_on_a_date.pipeline import (
     K,
     ModelCallError,
     NoTextError,
+    ToolReportError,
     VersionLookup,
     answer,
     combine,
@@ -158,6 +159,15 @@ def version_lines(passage: Passage, as_of: str) -> list[str]:
     return lines
 
 
+def answer_heading(*, show_passages: bool, scripted: bool) -> str:
+    if scripted:
+        where = "from the passages above" if show_passages else "passages not printed, see --show-passages"
+        return f"Answer (scripted for this dry run; {where}):"
+    if show_passages:
+        return "Answer (written by the model from the passages above):"
+    return "Answer (written by the model from the passages given to it; see --show-passages):"
+
+
 def source_line(n: int, node: NodeWithScore) -> str:
     metadata = node.node.metadata
     line = f"[{n}] {clean(str(metadata['citation']))}"
@@ -183,6 +193,7 @@ def render(
     answer_text: str | None,
     model_label: str,
     show_passages: bool,
+    scripted: bool = False,
 ) -> str:
     lines = [f"Question: {clean(question)}", f"Act: CELEX {celex}", f"Date: {as_of}"]
     if provision:
@@ -191,8 +202,10 @@ def render(
     if show_passages and nodes:
         lines += ["Passages given to the model:", "", clean(format_passages(nodes), keep_newlines=True), ""]
     if answer_text is not None:
-        where = "above" if show_passages else "given to it (not printed; see --show-passages)"
-        lines += [f"Answer (written by the model from the passages {where}):", clean(answer_text, keep_newlines=True)]
+        lines += [
+            answer_heading(show_passages=show_passages, scripted=scripted),
+            clean(answer_text, keep_newlines=True),
+        ]
     elif nodes:
         lines.append("None of the passages has text for that date, so no model was called.")
     else:
@@ -205,7 +218,9 @@ def render(
     if withheld:
         lines.append(NOTICE_MEANING)
     if filtered_out:
-        lines.append(f"Left out: {filtered_out} hit(s) from acts other than CELEX {celex}.")
+        # The adapter keeps a hit when its CELEX number or the act it consolidates is the one asked for;
+        # a hit from another act, and a consolidated text that does not name its act, are left out.
+        lines.append(f"Left out: {filtered_out} hit(s) not attributed to CELEX {celex}.")
     lines += [credits_line(calls), "", CLOSING]
     return "\n".join(lines)
 
@@ -221,7 +236,10 @@ def render_compare(celex: str, lookups: Sequence[VersionLookup], calls: Sequence
     if unknown:
         lines.append(f"Not compared: LexAPI did not establish the version for {' and '.join(unknown)}.")
     elif a == b:
-        lines.append(f"Same version: {a} is listed for both dates.")
+        lines.append(
+            f"Same version: {a} is listed for both dates. "
+            "This says which version LexAPI lists, not that nothing changed between the dates."
+        )
     else:
         lines.append(
             f"Different versions: {a} is listed for {first.as_of} and {b} for {second.as_of}. "
@@ -335,6 +353,8 @@ def main(
     model_label = "scripted (no model was called)"
     try:
         if args.dry_run:
+            if args.celex != GDPR_CELEX:
+                raise ConfigError(f"The dry run has fixtures for CELEX {GDPR_CELEX} only.")
             os.environ["LEXAPI_BASE_URL"] = offline.DRY_RUN_BASE_URL
             os.environ["LEXAPI_API_KEY"] = "lex_dry_run_no_key"
             transport = offline.LexAPIMock().transport()
@@ -363,10 +383,10 @@ def main(
                 )
                 found, report = retrieve(retriever, args.question)
                 calls.append(("search", report))
-        except (LexAPIToolError, LexAPIError) as error:
+        except (LexAPIToolError, LexAPIError, ToolReportError) as error:
             if calls:
                 print(credits_line(calls), file=sys.stderr)  # the calls before it were charged
-            print(refusal(error), file=sys.stderr)
+            print(one_line(str(error)) if isinstance(error, ToolReportError) else refusal(error), file=sys.stderr)
             return 1
 
         if args.compare:
@@ -401,6 +421,7 @@ def main(
         answer_text=answer_text,
         model_label=model_label,
         show_passages=args.show_passages,
+        scripted=args.dry_run,
     )
     print(text, file=out)
     return 0

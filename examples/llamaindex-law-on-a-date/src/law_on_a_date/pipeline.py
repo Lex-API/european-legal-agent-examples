@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import sys
 import unicodedata
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
@@ -13,6 +14,7 @@ from typing import Any
 from lexapi.passages import Passage
 from llama_index.core.base.llms.types import ChatMessage, ChatResponse, MessageRole
 from llama_index.core.bridge.pydantic import Field
+from llama_index.core.instrumentation import get_dispatcher  # type: ignore[attr-defined]  # re-exported
 from llama_index.core.instrumentation.event_handlers import BaseEventHandler
 from llama_index.core.instrumentation.events import BaseEvent
 from llama_index.core.llms import LLM
@@ -21,7 +23,6 @@ from llama_index.core.schema import MetadataMode, NodeWithScore, TextNode
 from llama_index.retrievers.lexapi import EXCLUDED_LLM_METADATA_KEYS, LexAPICallReport, LexAPILegislationRetriever
 from llama_index.tools.lexapi import LexAPICallReport as ToolCallReport
 from llama_index.tools.lexapi import LexAPIToolEvent, LexAPIToolSpec
-from llama_index_instrumentation import get_dispatcher
 
 GDPR_CELEX = "32016R0679"  # Regulation (EU) 2016/679, the default act
 K = 10  # hits asked for; only hits of the act are kept, after the search (see the README)
@@ -62,6 +63,10 @@ class AnswerError(RuntimeError):
 
 class NoTextError(RuntimeError):
     """No passage has text, so the model was not called."""
+
+
+class ToolReportError(RuntimeError):
+    """The tool returned, but did not dispatch the event that carries its result."""
 
 
 class ModelCallError(RuntimeError):
@@ -117,9 +122,16 @@ class _ToolEvents(BaseEventHandler):
             self.events.append(event)
 
 
+def _tools_dispatcher() -> Any:
+    """The dispatcher the tools adapter sends its events through (its module's), or the root one."""
+    root = get_dispatcher()
+    found = getattr(sys.modules.get(LexAPIToolSpec.__module__), "dispatcher", None)
+    return found if isinstance(found, type(root)) else root
+
+
 @contextmanager
 def _tool_events() -> Iterator[_ToolEvents]:
-    dispatcher = get_dispatcher()
+    dispatcher = _tools_dispatcher()
     handler = _ToolEvents()
     dispatcher.add_event_handler(handler)
     try:
@@ -129,10 +141,21 @@ def _tool_events() -> Iterator[_ToolEvents]:
 
 
 def look_up_version(spec: LexAPIToolSpec, celex: str, as_of: str, provision: str | None = None) -> VersionLookup:
-    """The version LexAPI lists for the date and, with ``provision``, that provision's text for the date."""
+    """The version LexAPI lists for the date and, with ``provision``, that provision's text for the date.
+
+    The event is matched to this call by tool name and date. This runs single-threaded; with concurrent calls,
+    match each event to its call (for example by the passage's CELEX number and provision as well).
+    """
     with _tool_events() as seen:
         output = spec.lexapi_legislation_as_of(celex, as_of, provision=provision)
-    event = seen.events[-1]
+    matching = [
+        event
+        for event in seen.events
+        if event.tool == "lexapi_legislation_as_of" and event.result.as_of == as_of and event.result.passages
+    ]
+    if len(matching) != 1:
+        raise ToolReportError("The tool did not report its result.")
+    event = matching[0]
     return VersionLookup(as_of=as_of, tool_output=output, passage=event.result.passages[0], report=event.report)
 
 
@@ -145,11 +168,41 @@ def retrieve(retriever: LexAPILegislationRetriever, question: str) -> tuple[list
     return nodes, report
 
 
+_ARTICLE = re.compile(r"(?:art(?:icle)?\.?[\s_]*)?(\d+[a-z]*)", re.IGNORECASE)
+
+
+def _passage_key(node: NodeWithScore) -> tuple[str, str, str, str]:
+    """What identifies a passage across the two calls: the act to cite, the part, the date and the language.
+
+    The part is compared as the adapter ids it (``art_17``), whatever spelling of the provision was sent.
+    """
+    meta = node.node.metadata
+    part = str(meta.get("article_ref") or "").strip()
+    if article := _ARTICLE.fullmatch(part):
+        part = f"art_{article.group(1).lower()}"
+    act = str(meta.get("cite_celex") or meta.get("celex") or "")
+    return act.upper(), part, str(meta.get("as_of") or ""), str(meta.get("language") or "")
+
+
+def _rank(node: NodeWithScore) -> int:
+    """The adapters' rule: a text over a labelled latest text over a notice."""
+    if has_text(node):
+        return 2
+    return 1 if node.node.metadata.get("text_status") == "not_established_for_date" else 0
+
+
 def combine(provision: NodeWithScore | None, nodes: Sequence[NodeWithScore]) -> list[NodeWithScore]:
-    """The provision first, then the retrieved nodes; a node with the provision's id is not repeated."""
+    """The provision first, then the retrieved nodes.
+
+    A retrieved node for the same passage is not repeated: whichever of the two ranks higher takes the
+    provision's place, so a text is never replaced by a notice.
+    """
     if provision is None:
         return list(nodes)
-    return [provision, *(n for n in nodes if n.node.node_id != provision.node.node_id)]
+    key = _passage_key(provision)
+    same = [n for n in nodes if _passage_key(n) == key]
+    best = max([provision, *same], key=_rank)  # the provision wins a tie
+    return [best, *(n for n in nodes if _passage_key(n) != key)]
 
 
 # ── step 3: the answer ──────────────────────────────────────────────────

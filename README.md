@@ -16,7 +16,7 @@ answer - with a check in code that every citation points at a source that was ac
 | [GDPR research assistant](examples/gdpr-research-assistant) | Python | Ask a question; get quotations from the GDPR and CJEU judgments with CELEX / ECLI and links, optionally for the text in force on a date. | 12-20 (up to 35 with `--as-of`) |
 | [Regulatory change monitor](examples/regulatory-change-monitor) | TypeScript | Watch acts and topics for new or changed documents; get a cited digest. Polling by default, signed webhooks on paid plans. | 8 for the example watch list |
 | [DORA questions answered from cited passages](examples/langchain-eu-law-rag) | Python (LangChain) | RAG over EU law with LangChain: ask about DORA; the official retriever fetches the articles, each with its Source line (CELEX, article, EUR-Lex link), and the model answers with `[1]`-style citations. Optionally for a date: passages without text for that date arrive as notices. Prints the credits used. | 5 (up to 20 with `--as-of`) |
-| [EU law for a date, from cited passages](examples/llamaindex-law-on-a-date) | Python (LlamaIndex) | EU law for a date with LlamaIndex: name an act and a date; the official LexAPI tools return the version listed for that date and the provision's text, each with its Source line; passages whose text for that date is not established arrive as notices. A model answers from the passages with `[1]`-style citations. Compare two dates. Prints the credits used. | 6-25 (2 with `--compare`) |
+| [EU law for a date, from cited passages](examples/llamaindex-law-on-a-date) | Python (LlamaIndex) | EU law for a date with LlamaIndex: name an act and a date; the official LexAPI tools return the version listed for that date and, for a named provision, its text, each with its Source line; passages whose text for that date is not established arrive as notices. A model answers from the passages with `[1]`-style citations. Compare two dates. Prints the credits used. | 6-25 (2 with `--compare`) |
 
 Credit figures are computed from the weights in the
 [API reference](https://lex-api.com/docs?ref=github-examples); each example's README shows the
@@ -148,7 +148,7 @@ Built against `@lexapi/client` 0.4.0 (npm), `lexapi-client` 0.4.0 (PyPI) and `@l
 The LangChain example is built against `langchain-lexapi` 0.1.0 (installed from its repository at
 commit `1680bc3`, which brings its own pinned `lexapi-client`), `langchain-core` 1.8.3 and
 `langchain-anthropic` 1.7.11. The LlamaIndex example is built against `llama-index-retrievers-lexapi`
-and `llama-index-tools-lexapi` 0.1.0 (installed from their repository at commit `7abab81`, which
+and `llama-index-tools-lexapi` 0.1.0 (installed from their repository at commit `a85f7e2`, which
 brings its own pinned `lexapi-client`), `llama-index-core` 0.14.26 and `llama-index-llms-anthropic`
 0.13.0.
 

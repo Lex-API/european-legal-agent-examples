@@ -1,6 +1,6 @@
 # EU law for a date, from cited passages (LlamaIndex)
 
-Ask what an EU act said on a date, and be told plainly where LexAPI has no text for that date.
+Ask about an EU act for a date: get the version LexAPI lists for that date and an answer from its passages with citations, and be told plainly where LexAPI has no text for that date.
 
 Name an act (the GDPR, Regulation (EU) 2016/679, by default), a date and, optionally, a provision.
 The official LexAPI tools for LlamaIndex, [`llama-index-tools-lexapi`](https://github.com/Lex-API/lexapi-llamaindex),
@@ -8,8 +8,9 @@ return the version LexAPI lists for that date and the provision's text for the d
 retriever, `llama-index-retrievers-lexapi`, then fetches the act's passages matching your question,
 for the same date. A model answers from those passages only, citing each claim as `[1]`, `[2]`, ...
 Passages whose text for that date is not established arrive as notices, without text. `--compare`
-lists the version for two dates and says whether it is the same one. It uses `llama-index-core` and
-one LLM integration (`llama-index-llms-anthropic`); no index, no embeddings, no agent loop.
+lists the version for two dates and says whether it is the same one. It is point-in-time (as-of-date)
+retrieval-augmented generation (RAG) with `llama-index-core` and one LLM integration
+(`llama-index-llms-anthropic`); no index, no embeddings, no agent loop.
 
 ## The core
 
@@ -20,7 +21,7 @@ from llama_index.llms.anthropic import Anthropic
 from llama_index.retrievers.lexapi import LexAPILegislationRetriever
 from llama_index.tools.lexapi import LexAPIToolSpec
 
-act, date, question = "32016R0679", "2019-06-01", "What did Article 17 say about erasure?"
+act, date, question = "32016R0679", "2019-06-01", "What did Article 17 of the GDPR say about erasure?"
 llm = Anthropic(model="claude-sonnet-5-5")  # reads ANTHROPIC_API_KEY
 
 # Both read LEXAPI_API_KEY; `with` closes the clients they built.
@@ -44,8 +45,14 @@ That is the whole idea. `src/law_on_a_date/pipeline.py` is the same pipeline wit
 step, the full prompt (`src/law_on_a_date/prompt.txt`), the same guard (`answer()` raises
 `NoTextError` and calls no model when no passage has text) and a citation check; `cli.py` adds the
 command line, `--compare`, the output and error handling, and `offline.py` the `--dry-run`
-stand-ins. A test runs the snippet above against a mock LexAPI and a scripted LLM, so it stays in
-step with the adapters.
+stand-ins. The full pipeline also reads the version and the lookup's credits from the tool's
+`LexAPIToolEvent`. A test runs the snippet above against a mock LexAPI and a scripted LLM, so it
+stays in step with the adapters. Start-up takes a few seconds (importing LlamaIndex).
+
+It calls `llm.chat` itself rather than a query engine or response synthesizer, so that no model is
+called when no passage has text and the `[n]` in the answer are the numbers in the printed source
+list. To hand the same tools to an agent, pass `LexAPIToolSpec().to_tool_list()` to a LlamaIndex
+agent; see the adapter's README.
 
 ## What it does not do
 
@@ -53,6 +60,11 @@ step with the adapters.
   law, and neither does this example. It is research support, not legal advice.
 - It reports the version LexAPI lists for a date and the text for that date. It does not say whether
   a provision applied on that date: an act can be in force while some of its provisions apply later.
+- When no consolidated version is listed for the date, the answer is the act as published in the
+  Official Journal, without later corrigenda.
+- `--provision` addresses whole articles, annexes and recitals, not paragraphs or points.
+- For a date before the act existed, a real run prints `Version for <date>: not established by
+  LexAPI (reason: not_yet_adopted)`.
 - `--compare` compares the versions listed for two dates, not their texts. It says whether the same
   version is listed for both; it does not say what changed.
 - It only sees the provision you name and what one search returned: at most 10 hits, of which only
@@ -76,9 +88,13 @@ The pipeline is two explicit steps, not an agent: the model never chooses which 
 2. **Passages for the question, for the date.** `LexAPILegislationRetriever(as_of=date,
    celex=act, similarity_top_k=10)` runs one semantic search with the date. The API cannot limit a
    search to one act, so the adapter keeps only the act's passages (and its consolidated texts) after
-   the search; the output counts the hits from other acts that were left out. A hit whose text for
+   the search (a hit is kept when its CELEX number, or the act it consolidates, is the one asked
+   for); the output counts the hits left out, which includes a consolidated text that does not name
+   its act. A hit whose text for
    the date LexAPI did not establish stays as a notice node (the adapter's defaults,
-   `unresolved="withhold"`, `emit_withheld=True`). A retrieved copy of the provision is not repeated.
+   `unresolved="withhold"`, `emit_withheld=True`). When the search returns the provision too, only
+   one copy is kept, in the provision's place: the one with text, by the adapters' rule (a text over a
+   labelled latest text over a notice), whichever way `--provision` was written.
 3. **What the model sees.** Each passage is `node.get_content(MetadataMode.LLM)`: the node's
    metadata lines (`text_status`, `cite_celex`, `consolidated`, `as_of`, `as_of_resolved`,
    `as_of_reason`, ...; the adapter hides the citation, ids and score from this view), a blank line,
@@ -121,7 +137,8 @@ The pipeline is two explicit steps, not an agent: the model never chooses which 
 
 ### What the model sees for a notice
 
-From the dry run below (synthetic fixture), the third passage as the model receives it. No text of
+From `law-on-a-date --dry-run --show-passages --as-of 2019-06-01 --provision art_17 "What did Article
+17 of the GDPR say about erasure?"` (synthetic fixture), the third passage as the model receives it. No text of
 the provision is in it; the latest text LexAPI holds for that article is not passed on.
 
 ```text
@@ -147,9 +164,12 @@ Source: CELEX 32016R0679, art_18, text for 2019-06-01 not established, https://e
 needs that repository to be reachable. Until it is public, installing needs GitHub access to that
 repository (for example `gh auth login`).
 
+On an Intel Mac, `pyproject.toml` also pins `cryptography` below 49: `llama-index-llms-anthropic`
+needs it, and from 49.0.0 it ships macOS wheels for Apple silicon only.
+
 ```
-llama-index-retrievers-lexapi @ git+https://github.com/Lex-API/lexapi-llamaindex@7abab816d48f28665727a14f20401b6de5fb3899#subdirectory=llama-index-retrievers-lexapi
-llama-index-tools-lexapi @ git+https://github.com/Lex-API/lexapi-llamaindex@7abab816d48f28665727a14f20401b6de5fb3899#subdirectory=llama-index-tools-lexapi
+llama-index-retrievers-lexapi @ git+https://github.com/Lex-API/lexapi-llamaindex@a85f7e22535182bf65032748b6e43c383cba640c#subdirectory=llama-index-retrievers-lexapi
+llama-index-tools-lexapi @ git+https://github.com/Lex-API/lexapi-llamaindex@a85f7e22535182bf65032748b6e43c383cba640c#subdirectory=llama-index-tools-lexapi
 ```
 
 ## Run it
@@ -157,19 +177,24 @@ llama-index-tools-lexapi @ git+https://github.com/Lex-API/lexapi-llamaindex@7aba
 ```bash
 cd examples/llamaindex-law-on-a-date
 python3 -m venv .venv && . .venv/bin/activate     # Python 3.11+
-pip install -e .                                  # keep -e: --dry-run reads the repository's fixtures
+pip install -e .                                  # keep -e (below)
 
 # No keys: LexAPI is replaced by a local mock and the model by a scripted reply (synthetic texts)
-law-on-a-date --dry-run --as-of 2019-06-01 --provision art_17 "What did Article 17 say about erasure?"
+law-on-a-date --dry-run --as-of 2019-06-01 --provision art_17 "What did Article 17 of the GDPR say about erasure?"
 law-on-a-date --dry-run --show-passages --as-of 2024-01-01 "What does the GDPR say about objections?"
 law-on-a-date --dry-run --compare 2018-05-25 2024-01-01
 
 # For real, with your own keys
 cp .env.example .env                              # then fill in LEXAPI_API_KEY and ANTHROPIC_API_KEY
-law-on-a-date --as-of 2019-06-01 --provision art_17 "What did Article 17 say about erasure?"
+law-on-a-date --as-of 2019-06-01 --provision art_17 "What did Article 17 of the GDPR say about erasure?"
 law-on-a-date --celex 32022R2554 --as-of 2025-01-17 "What does DORA say about ICT risk management?"
 law-on-a-date --compare 2018-05-25 2024-01-01     # needs LEXAPI_API_KEY only; no model is called
 ```
+
+Keep `-e`: `--dry-run` reads the repository's fixtures and `.env` is read from this folder. The dry
+run has fixtures for CELEX 32016R0679 only; with another `--celex` it exits with code 2.
+
+Every run needs `--as-of` (with a question) or `--compare` (two dates, no question).
 
 `--celex` takes the CELEX number of an EU regulation, directive or decision (default `32016R0679`).
 `--provision` takes an article (`art_17`, `17`, `Article 17`), an annex (`anx_III`) or recitals
@@ -188,7 +213,7 @@ Exit codes:
   used; then the credits line of the LexAPI calls is printed first.
 - 2: a usage or configuration error: an empty question, a malformed, impossible or future date, the
   same date twice for `--compare`, a malformed `--celex`, a missing `LEXAPI_API_KEY` or
-  `ANTHROPIC_API_KEY`, or `--dry-run` without the repository's fixtures.
+  `ANTHROPIC_API_KEY`, or `--dry-run` without the repository's fixtures or with another act.
 
 ## Cost
 
@@ -198,14 +223,16 @@ LexAPI credits per run, from the adapters' documentation and the
 | Step | Credits |
 | --- | --- |
 | Version lookup, without `--provision` | 1 |
-| Version lookup with `--provision`: the provision's text is fetched | 4, or 5 when fetched live (1 if the fetch fails or finds no text) |
+| Version lookup with `--provision` | 1 when no text is fetched; 4, or 5 when fetched live, when the provision's text is fetched; 1 if the fetch fails or finds no text |
 | Semantic legislation search with a date | 5, plus up to 3 version fetches at 0-5 each |
 
 So a question costs **6-21 credits** without `--provision` and **6-25** with it, in 2 requests.
 `--compare` costs **2 credits** (two version lookups). The `celex` filter and `similarity_top_k=10`
 do not change the price. The run prints the figures the API reported for each call; if a response
-carries none, it says "not reported" rather than 0. Model usage is billed separately by your model
-provider.
+carries none, it says "not reported" rather than 0. A refused lookup can still cost 1 credit (an
+unknown act, for example: a 404 is refunded down to 1 credit); the tool's error does not report
+credits, so none are printed for it.
+Model usage is billed separately by your model provider.
 
 ## Tests
 
@@ -219,10 +246,12 @@ requests sent (as-of body, search `query`, `limit`, `include`, `asOf`), date, qu
 another act, the metadata lines the model sees, the prompt's rules, the version lines (as published,
 consolidated, not established), compare's same / different / not compared results and date order,
 the source list against the passages, the withheld, reason, left-out and credits lines (and "not
-reported"), no model call when no passage has text, the citation check (the LangChain example's
+reported"), which copy is kept when the search returns the provision too (for each spelling of
+`--provision`), the tool's event read from the adapter's dispatcher and its handler removed after
+each lookup, no model call when no passage has text, the citation check (the LangChain example's
 table, and a test that the two examples' check is the same code), unusable replies and model-provider
 errors, 401/402/403/429/500 and unreadable answers, sanitised output, the API key never printed, the
-model settings, the client closed after the run, the dry run, and the snippet in "The core".
+model settings, the client closed after the run, the dry run (and its refusal of another act), and the snippet in "The core".
 Not covered by any test: the live API and a real model.
 Until the adapters' repository is public, these tests run locally only (`pip install -e .` needs
 access to it); the CI job checks whether it is reachable and skips with a notice when it is not.
@@ -241,11 +270,11 @@ that rule is part of the fixture, not LexAPI's data. The fixture forces one pass
 to show what a notice looks like.
 
 ```text
-$ law-on-a-date --dry-run --as-of 2019-06-01 --provision art_17 "What did Article 17 say about erasure?"
+$ law-on-a-date --dry-run --as-of 2019-06-01 --provision art_17 "What did Article 17 of the GDPR say about erasure?"
 DRY RUN - LexAPI was replaced by a local mock and the model by a scripted reply.
 The texts and versions are synthetic placeholders, not the wording or the versions of any act.
 
-Question: What did Article 17 say about erasure?
+Question: What did Article 17 of the GDPR say about erasure?
 Act: CELEX 32016R0679
 Date: 2019-06-01
 Provision: art_17
@@ -254,7 +283,7 @@ Model: scripted (no model was called)
 Version listed for 2019-06-01: 32016R0679, the act as published in the Official Journal.
   Source: CELEX 32016R0679, art_17, version for 2019-06-01: 32016R0679, https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32016R0679
 
-Answer (written by the model from the passages given to it (not printed; see --show-passages)):
+Answer (scripted for this dry run; passages not printed, see --show-passages):
 The provision, in the version listed for the date asked, describes a placeholder request that a placeholder body handles [1]. Another passage describes a placeholder objection to a placeholder activity [2]. LexAPI has no text of the third passage's provision for that date, so it is not described here [3].
 
 Sources:
@@ -264,7 +293,7 @@ Sources:
 
 Withheld for 2019-06-01: 1 passage(s) have no text for that date and arrived as a notice.
 A notice gives only LexAPI's reason for having no text for that date; check the source for whether the provision applied then.
-Left out: 1 hit(s) from acts other than CELEX 32016R0679.
+Left out: 1 hit(s) not attributed to CELEX 32016R0679.
 LexAPI credits used for this run: 9 (version lookup: 4, search: 5). Credits remaining: 491.
 
 Research support, not legal advice. The answer is model-written and may misread the passages; check it against the sources.

@@ -15,10 +15,11 @@ from llama_index.core.base.llms.types import ChatMessage, ChatResponse, MessageR
 from llama_index.core.schema import NodeWithScore, TextNode
 from llama_index.llms.anthropic import Anthropic
 from llama_index.retrievers.lexapi import LexAPICallReport, LexAPILegislationRetriever
+from llama_index.tools.lexapi import LexAPIToolSpec
 
 from law_on_a_date import cli, offline, pipeline
 
-QUESTION = "What did the provision say about a placeholder request?"
+QUESTION = "What did Article 17 of the GDPR say about erasure?"
 EARLY, LATE = "2019-06-01", "2024-01-01"  # the mock lists the act as published before 2020, a consolidated text after
 ARTICLE = "https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32016R0679"
 CONSOLIDATED = "https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:02016R0679-20990101"
@@ -123,7 +124,7 @@ def test_another_act_can_be_named(stub: Stub, capsys: pytest.CaptureFixture[str]
     )
     assert stub.bodies()[0]["document"] == "32099L0009"
     assert code == 0 and "Act: CELEX 32099L0009" in out
-    assert "Left out: 2 hit(s) from acts other than CELEX 32099L0009." in out
+    assert "Left out: 2 hit(s) not attributed to CELEX 32099L0009." in out
 
 
 # ── what the model is sent ──────────────────────────────────────────────
@@ -184,13 +185,87 @@ def test_the_provision_node_is_shaped_like_the_retrievers(stub: Stub, capsys: py
     assert "[SYNTHETIC FIXTURE - not the text of the act] Placeholder provision G1" in first
 
 
-def test_a_retrieved_copy_of_the_provision_is_not_repeated() -> None:
-    def node(id_: str) -> NodeWithScore:
-        return NodeWithScore(node=TextNode(text="x", id_=id_), score=None)
+def passage(status: str, part: str = "art_17", text: str = "[SYNTHETIC FIXTURE] t") -> NodeWithScore:
+    body = text if status == "provided" else "[No text: placeholder notice]"
+    metadata = {
+        "text_status": status,
+        "cite_celex": "32016R0679",
+        "article_ref": part,
+        "as_of": EARLY,
+        "language": "en",
+    }
+    return NodeWithScore(node=TextNode(text=f"{body}\nSource: placeholder", metadata=metadata), score=None)
 
-    combined = pipeline.combine(node("a"), [node("b"), node("a"), node("c")])
-    assert [n.node.node_id for n in combined] == ["a", "b", "c"]
-    assert [n.node.node_id for n in pipeline.combine(None, [node("b")])] == ["b"]
+
+def test_combine_keeps_the_better_of_two_copies_in_the_provisions_place() -> None:
+    other = passage("provided", part="art_21")
+    for provision, copy, winner in [
+        (passage("withheld", part="17"), passage("provided"), "copy"),
+        (passage("withheld", part="Article 17"), passage("not_established_for_date"), "copy"),
+        (passage("provided"), passage("withheld"), "provision"),
+        (passage("not_established_for_date", part="article 17"), passage("withheld"), "provision"),
+        (passage("provided"), passage("provided"), "provision"),  # a tie keeps the provision
+        (passage("provided", text=" \u200b "), passage("withheld"), "provision"),  # blank text ranks as a notice
+        (passage("provided", text=" \u200b "), passage("not_established_for_date"), "copy"),
+    ]:
+        combined = pipeline.combine(provision, [other, copy])
+        assert len(combined) == 2 and combined[1] is other
+        assert combined[0] is (copy if winner == "copy" else provision)
+    assert [n is other for n in pipeline.combine(None, [other])] == [True]
+    art_18 = passage("provided", part="art_18")
+    assert [n is m for n, m in zip(pipeline.combine(art_18, [other]), [art_18, other], strict=True)] == [True, True]
+
+
+def add_art17(as_of_resolved: bool) -> Any:
+    """The search fixture with one more hit: art_17 of the act, resolved or not for the date."""
+
+    def reply(body: dict[str, Any]) -> tuple[int, Any]:
+        payload = offline.search_reply(body)
+        template = payload["results"][0 if as_of_resolved else 1]
+        hit = json.loads(json.dumps(template))
+        hit.update(id="fx-gdpr-date-0017", article_ref="art_17")
+        if as_of_resolved:
+            hit["text"] = "[SYNTHETIC FIXTURE - not the text of the act] RETRIEVED-ART-17-TEXT"
+        payload["results"].insert(0, hit)
+        return 200, payload
+
+    return reply
+
+
+@pytest.mark.parametrize("spelling", ["17", "art_17", "Article 17"])
+def test_a_retrieved_text_replaces_a_provision_notice(spelling: str, capsys: pytest.CaptureFixture[str]) -> None:
+    llm = scripted(ANSWER_3)
+    stub = Stub(replies={"as-of": unresolved_lookup, "semantic": add_art17(as_of_resolved=True)})
+    code, out, _ = run(stub, llm, "--as-of", EARLY, "--provision", spelling, QUESTION, capsys=capsys)
+
+    assert code == 0
+    assert stub.bodies()[0]["provision"] == spelling
+    _system, human = prompt_text(llm)
+    assert human.split("[1]\n", 1)[1].startswith("text_status: provided\n")
+    assert "RETRIEVED-ART-17-TEXT" in human
+    assert "art_17 is not established" not in human and human.count("Source: ") == 3
+    assert sources_map(out) == [
+        f"[1] CELEX 32016R0679, art_17, version for {EARLY}: 32016R0679, {ARTICLE}",
+        f"[2] {expected_citations(EARLY)[1]}",
+        f"[3] {expected_citations(EARLY)[2]} - notice only, no text was given to the model (reason: fetch_timeout)",
+    ]
+    assert f"Withheld for {EARLY}: 1 passage(s)" in out
+
+
+@pytest.mark.parametrize("spelling", ["17", "art_17", "Article 17"])
+def test_a_retrieved_notice_never_replaces_the_provisions_text(
+    spelling: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    llm = scripted(ANSWER_3)
+    stub = Stub(replies={"semantic": add_art17(as_of_resolved=False)})
+    code, out, _ = run(stub, llm, "--as-of", EARLY, "--provision", spelling, QUESTION, capsys=capsys)
+
+    assert code == 0
+    _system, human = prompt_text(llm)
+    assert "Placeholder provision G1" in human.split("[1]\n", 1)[1].split("\n\n[2]\n", 1)[0]
+    assert "art_17 is not established" not in human and human.count("Source: ") == 3
+    assert sources_map(out)[0] == f"[1] {expected_citations(EARLY)[0]}"
+    assert f"Withheld for {EARLY}: 1 passage(s)" in out
 
 
 # ── what is printed ─────────────────────────────────────────────────────
@@ -201,7 +276,7 @@ def test_answer_sources_withheld_and_credits(stub: Stub, capsys: pytest.CaptureF
 
     assert code == 0
     assert out.index("Version listed for") < out.index(ANSWER_3) < out.index("Sources:")
-    assert "Answer (written by the model from the passages given to it (not printed; see --show-passages)):" in out
+    assert "Answer (written by the model from the passages given to it; see --show-passages):" in out
     assert "Placeholder provision" not in out  # no passage text is printed by default
     citations = expected_citations(EARLY)
     assert sources_map(out) == [
@@ -213,7 +288,7 @@ def test_answer_sources_withheld_and_credits(stub: Stub, capsys: pytest.CaptureF
         f"Withheld for {EARLY}: 1 passage(s) have no text for that date and arrived as a notice.\n"
         + cli.NOTICE_MEANING
         + "\n"
-        "Left out: 1 hit(s) from acts other than CELEX 32016R0679.\n"
+        "Left out: 1 hit(s) not attributed to CELEX 32016R0679.\n"
         "LexAPI credits used for this run: 9 (version lookup: 4, search: 5). Credits remaining: 491."
     ) in out
     assert out.rstrip().endswith(cli.CLOSING)
@@ -608,7 +683,10 @@ def test_compare_lists_a_different_version_for_each_date(stub: Stub, capsys: pyt
 def test_compare_says_when_the_same_version_is_listed(stub: Stub, capsys: pytest.CaptureFixture[str]) -> None:
     code, out, _ = run(stub, None, "--compare", "2018-05-25", EARLY, capsys=capsys)
     assert code == 0
-    assert "Same version: 32016R0679 is listed for both dates." in out
+    assert (
+        "Same version: 32016R0679 is listed for both dates. "
+        "This says which version LexAPI lists, not that nothing changed between the dates."
+    ) in out
     assert "Different" not in out
 
 
@@ -860,3 +938,95 @@ def test_the_fixtures_are_marked_synthetic() -> None:
         body = json.dumps(offline.read_fixture(name))
         texts = body.count('"text": ')
         assert texts and body.count('"text": "[SYNTHETIC FIXTURE - not the text of the act]') == texts
+
+
+def test_the_dry_run_refuses_another_act(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.delenv("LEXAPI_API_KEY")
+    for args in (["--as-of", EARLY, QUESTION], ["--compare", EARLY, LATE]):
+        out = io.StringIO()
+        assert cli.main(["--dry-run", "--celex", "32022R2554", *args], out=out) == 2
+        assert out.getvalue() == ""
+        assert capsys.readouterr().err == "The dry run has fixtures for CELEX 32016R0679 only.\n"
+
+
+# ── the tool's event ────────────────────────────────────────────────────
+
+
+def handlers() -> tuple[list[Any], list[Any]]:
+    from llama_index.core.instrumentation import get_dispatcher  # type: ignore[attr-defined]
+
+    return list(pipeline._tools_dispatcher().event_handlers), list(get_dispatcher().event_handlers)
+
+
+def test_the_result_is_read_from_the_tools_own_dispatcher() -> None:
+    assert pipeline._tools_dispatcher().name == "llama_index.tools.lexapi.base"
+
+
+def test_the_event_handler_is_removed_after_each_lookup(capsys: pytest.CaptureFixture[str]) -> None:
+    before = handlers()
+    assert run(Stub(), scripted(ANSWER_3), "--as-of", EARLY, "--provision", "art_17", QUESTION, capsys=capsys)[0] == 0
+    assert handlers() == before
+    assert run(Stub(replies={"as-of": lambda _b: (402, ERRORS[402])}), None, "--compare", EARLY, LATE, capsys=capsys)[0]
+    assert handlers() == before
+
+
+def test_a_lookup_without_its_event_exits_1(
+    stub: Stub, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(LexAPIToolSpec, "lexapi_legislation_as_of", lambda self, *a, **k: "[placeholder]")
+    code, out, err = run(stub, scripted(ANSWER), "--compare", EARLY, LATE, capsys=capsys)
+    assert code == 1 and out == ""
+    assert err == "The tool did not report its result.\n"
+
+
+def test_an_event_for_another_date_is_not_taken(
+    stub: Stub, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    real = LexAPIToolSpec.lexapi_legislation_as_of
+
+    def other_date(self: LexAPIToolSpec, celex: str, as_of: str, **kwargs: Any) -> str:
+        return real(self, celex, "2018-05-25", **kwargs)
+
+    monkeypatch.setattr(LexAPIToolSpec, "lexapi_legislation_as_of", other_date)
+    code, _out, err = run(stub, scripted(ANSWER), "--as-of", EARLY, QUESTION, capsys=capsys)
+    assert code == 1
+    assert err == "The tool did not report its result.\n"
+
+
+def test_an_event_of_another_tool_is_not_taken(
+    stub: Stub, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    real = LexAPIToolSpec._emit
+
+    def as_another_tool(self: LexAPIToolSpec, tool: str, report: Any, result: Any) -> None:
+        real(self, "lexapi_search_legislation", report, result)
+
+    monkeypatch.setattr(LexAPIToolSpec, "_emit", as_another_tool)
+    code, _out, err = run(stub, None, "--compare", EARLY, LATE, capsys=capsys)
+    assert code == 1
+    assert err == "The tool did not report its result.\n"
+
+
+# ── hits not attributed to the act ──────────────────────────────────────
+
+
+def test_a_consolidated_hit_that_names_no_act_is_left_out_and_counted(capsys: pytest.CaptureFixture[str]) -> None:
+    def reply(body: dict[str, Any]) -> tuple[int, Any]:
+        payload = offline.search_reply(body)
+        hit = json.loads(json.dumps(payload["results"][0]))
+        hit.update(
+            id="fx-gdpr-date-0099",
+            law_id="02016R0679-20990101",
+            consolidated=True,
+            text="[SYNTHETIC FIXTURE - not the text of the act] UNNAMED-CONSOLIDATED-TEXT",
+        )
+        payload["results"].append(hit)
+        return 200, payload
+
+    llm = scripted(ANSWER_3)
+    code, out, _ = ask(Stub(replies={"semantic": reply}), llm, capsys=capsys)
+    assert code == 0
+    _system, human = prompt_text(llm)
+    assert "UNNAMED-CONSOLIDATED-TEXT" not in human
+    assert "Left out: 2 hit(s) not attributed to CELEX 32016R0679." in out
+    assert "other acts" not in out

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 from typing import Any
@@ -13,9 +14,10 @@ import pytest
 from conftest import TEST_KEY, Stub, scripted
 from lexapi import LexAPI
 
-from law_on_a_date import offline
+from law_on_a_date import cli, offline
 
 README = Path(__file__).resolve().parents[1] / "README.md"
+QUESTION = "What did Article 17 of the GDPR say about erasure?"
 ARTICLE = "https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32016R0679"
 
 
@@ -58,7 +60,12 @@ def test_the_core_snippet_runs(stub: Stub, monkeypatch: pytest.MonkeyPatch, caps
     assert made == [{"model": "claude-sonnet-5-5"}]
     assert [json.loads(r.content) for r in stub.requests] == [
         {"document": "32016R0679", "asOf": "2019-06-01"},
-        {"query": "What did Article 17 say about erasure?", "limit": 10, "include": ["text"], "asOf": "2019-06-01"},
+        {
+            "query": "What did Article 17 of the GDPR say about erasure?",
+            "limit": 10,
+            "include": ["text"],
+            "asOf": "2019-06-01",
+        },
     ]
     system, user = llm.seen[0]
     assert "cite each claim as [n]" in str(system.content)
@@ -90,3 +97,26 @@ def test_the_core_snippet_calls_no_model_without_text(monkeypatch: pytest.Monkey
     with client, pytest.raises(SystemExit, match="no model is called"):
         exec(compile(core_snippet(), str(README), "exec"), {})
     assert llm.seen == []
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        [
+            "--dry-run",
+            "--as-of",
+            "2019-06-01",
+            "--provision",
+            "art_17",
+            "What did Article 17 of the GDPR say about erasure?",
+        ],
+        ["--dry-run", "--compare", "2018-05-25", "2024-01-01"],
+    ],
+)
+def test_the_sample_outputs_are_what_the_dry_run_prints(args: list[str]) -> None:
+    command = "$ law-on-a-date " + " ".join(f'"{a}"' if " " in a else a for a in args) + "\n"
+    readme = README.read_text(encoding="utf-8")
+    start = readme.index(command) + len(command)
+    out = io.StringIO()
+    assert cli.main(args, out=out) == 0
+    assert readme[start : readme.index("\n```", start)] == out.getvalue().rstrip("\n")
