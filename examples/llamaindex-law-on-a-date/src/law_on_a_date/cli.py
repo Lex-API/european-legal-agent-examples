@@ -19,7 +19,7 @@ from typing import Any, TextIO
 
 import anthropic
 import httpx
-from lexapi import LexAPI, LexAPIError
+from lexapi import CreditsExhaustedError, LexAPI, LexAPIError, PaymentPastDueError
 from lexapi.passages import Passage, format_citation
 from llama_index.core.llms import LLM
 from llama_index.core.schema import NodeWithScore
@@ -42,13 +42,18 @@ from law_on_a_date.pipeline import (
     format_passages,
     has_text,
     look_up_version,
+    other_versions,
     retrieve,
 )
 
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5-5"
 USER_AGENT_SUFFIX = "european-legal-agent-examples"
 LOCAL_PREFIX = "http://127.0.0.1:"
-FIRST_DATE = datetime.date(1952, 1, 1)  # the earliest date LexAPI answers for
+DASHBOARD_URL = "https://lex-api.com/dashboard?ref=github-examples"
+FIRST_DATE = datetime.date(1952, 1, 1)  # the earliest date LexAPI accepts
+ACT = "Act: CELEX"
+DATE_ASKED = "Date asked"
+CREDITS_USED = "LexAPI credits used for this run"
 NOTICE_MEANING = (
     "A notice gives only LexAPI's reason for having no text for that date; "
     "check the source for whether the provision applied then."
@@ -61,7 +66,14 @@ CLOSING_COMPARE = (
     "Not legal advice. LexAPI provides source texts and citations; it does not assess whether anyone complies "
     "with the law."
 )
-_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_DATE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+_EXPORT = re.compile(r"^export\s+")
+PLACEHOLDERS = frozenset({"lex_your_key_here"})  # the key values this repository's .env.example files shipped
+_DASHBOARD_CODES = frozenset({"UNAUTHORIZED", "INVALID_API_KEY", "CREDITS_EXHAUSTED"})
+KEY_HELP = {
+    "LEXAPI_API_KEY": f"Create a key at {DASHBOARD_URL} or use --dry-run.",
+    "ANTHROPIC_API_KEY": "Add it to .env or use --dry-run.",
+}
 _ACT_CELEX = re.compile(r"^3\d{4}[RLD]\d{4}$")
 
 
@@ -89,16 +101,16 @@ def today() -> datetime.date:
 
 def date_arg(value: str) -> str:
     """argparse type for a date: a real calendar day written YYYY-MM-DD, from 1952-01-01 to today (UTC)."""
-    try:
-        day = datetime.date.fromisoformat(value) if _DATE.match(value) else None
-    except ValueError:
-        day = None
-    if day is None:
+    if not _DATE.fullmatch(value):
         raise argparse.ArgumentTypeError(f"expected a date written YYYY-MM-DD, got {value!r}")
+    try:
+        day = datetime.date.fromisoformat(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{value} is not a calendar date; expected YYYY-MM-DD") from None
     if day > today():
         raise argparse.ArgumentTypeError(f"{value} is in the future; LexAPI answers for dates up to today (UTC)")
     if day < FIRST_DATE:
-        raise argparse.ArgumentTypeError(f"{value} is before {FIRST_DATE}, the earliest date LexAPI answers for")
+        raise argparse.ArgumentTypeError(f"{value} is before {FIRST_DATE}, the earliest date LexAPI accepts")
     return day.isoformat()
 
 
@@ -113,7 +125,7 @@ def celex_arg(value: str) -> str:
 
 
 def not_blank(value: str) -> str:
-    """argparse type for the question and --provision: not empty or blank."""
+    """argparse type for a text argument: not empty or blank."""
     if not value.strip():
         raise argparse.ArgumentTypeError("the value is empty")
     return value.strip()
@@ -129,7 +141,7 @@ def credits_line(calls: Sequence[tuple[str, CallReport]]) -> str:
     total = "not reported" if any(value is None for value in charged) else str(sum(v or 0 for v in charged))
     parts = ", ".join(f"{label}: {shown(report.units_charged)}" for label, report in calls)
     remaining = shown(calls[-1][1].credits_remaining)
-    return f"LexAPI credits used for this run: {total} ({parts}). Credits remaining: {remaining}."
+    return f"{CREDITS_USED}: {total} ({parts}). Credits remaining: {remaining}."
 
 
 def version_lines(passage: Passage, as_of: str) -> list[str]:
@@ -195,10 +207,15 @@ def render(
     show_passages: bool,
     scripted: bool = False,
 ) -> str:
-    lines = [f"Question: {clean(question)}", f"Act: CELEX {celex}", f"Date: {as_of}"]
+    lines = [f"Question: {clean(question)}", f"{ACT} {celex}", f"{DATE_ASKED}: {as_of}"]
     if provision:
         lines.append(f"Provision: {clean(provision)}")
-    lines += [f"Model: {clean(model_label)}", "", *version_lines(lookup.passage, as_of), ""]
+    lines += [f"Model: {clean(model_label)}", "", *version_lines(lookup.passage, as_of)]
+    for version in other_versions(lookup.node(), nodes):
+        lines.append(
+            f"The search listed a different version for this provision ({clean(version)}); both passages are shown."
+        )
+    lines.append("")
     if show_passages and nodes:
         lines += ["Passages given to the model:", "", clean(format_passages(nodes), keep_newlines=True), ""]
     if answer_text is not None:
@@ -227,7 +244,7 @@ def render(
 
 def render_compare(celex: str, lookups: Sequence[VersionLookup], calls: Sequence[tuple[str, CallReport]]) -> str:
     first, second = lookups
-    lines = [f"Act: CELEX {celex}", f"Dates compared: {first.as_of} and {second.as_of}", ""]
+    lines = [f"{ACT} {celex}", f"Dates compared: {first.as_of} and {second.as_of}", ""]
     for lookup in lookups:
         lines += version_lines(lookup.passage, lookup.as_of)
     lines.append("")
@@ -253,13 +270,28 @@ def render_compare(celex: str, lookups: Sequence[VersionLookup], calls: Sequence
 
 
 def load_env_file(path: Path) -> None:
-    """Load ``KEY=value`` lines into the environment (existing variables win)."""
+    """Load ``KEY=value`` lines (also ``export KEY=value``) into the environment (existing variables win)."""
     if not path.exists():
         return
-    for line in path.read_text(encoding="utf-8").splitlines():
-        key, sep, value = line.strip().partition("=")
+    for line in path.read_text(encoding="utf-8-sig").splitlines():
+        key, sep, value = _EXPORT.sub("", line.strip(), count=1).partition("=")
         if sep and key and not key.startswith("#"):
             os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
+
+
+def env_key(name: str) -> str | None:
+    """The key in ``name``, trimmed; None when unset, blank, a placeholder this repository shipped, or ``<...>``."""
+    value = os.environ.get(name, "").strip()
+    if not value or value.lower() in PLACEHOLDERS or (value.startswith("<") and value.endswith(">")):
+        return None
+    return value
+
+
+def require_keys(names: Sequence[str]) -> None:
+    """Raise ConfigError naming every key in ``names`` that is not set, one line per key."""
+    missing = [name for name in names if env_key(name) is None]
+    if missing:
+        raise ConfigError("\n".join(f"{name} is not set. {KEY_HELP[name]}" for name in missing))
 
 
 def create_client(transport: httpx.BaseTransport | None = None) -> LexAPI:
@@ -267,9 +299,8 @@ def create_client(transport: httpx.BaseTransport | None = None) -> LexAPI:
 
     ``transport`` replaces the network (tests and --dry-run); the base URL must then be a 127.0.0.1 one.
     """
-    api_key = os.environ.get("LEXAPI_API_KEY")
-    if not api_key:
-        raise ConfigError("LEXAPI_API_KEY is not set. Create a key at https://lex-api.com/dashboard or use --dry-run.")
+    require_keys(["LEXAPI_API_KEY"])
+    api_key = env_key("LEXAPI_API_KEY") or ""  # set: checked just above
     base_url = os.environ.get("LEXAPI_BASE_URL")
     if transport is not None and not (base_url or "").startswith(LOCAL_PREFIX):
         raise RuntimeError(
@@ -283,25 +314,70 @@ def create_client(transport: httpx.BaseTransport | None = None) -> LexAPI:
 
 def create_llm() -> tuple[LLM, str]:
     """Anthropic through llama-index-llms-anthropic: ANTHROPIC_API_KEY, ANTHROPIC_MODEL (default claude-sonnet-5-5)."""
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise ConfigError("ANTHROPIC_API_KEY is not set. Add it to .env or use --dry-run.")
+    require_keys(["ANTHROPIC_API_KEY"])
     name = os.environ.get("ANTHROPIC_MODEL") or DEFAULT_ANTHROPIC_MODEL
-    return Anthropic(model=name, max_tokens=2000), f"anthropic:{name}"
+    return Anthropic(model=name, max_tokens=2000, api_key=env_key("ANTHROPIC_API_KEY")), f"anthropic:{name}"
 
 
-def one_line(text: str) -> str:
-    """Error text on one line, without control characters or any key from the environment."""
-    for name in ("ANTHROPIC_API_KEY", "LEXAPI_API_KEY"):
-        if secret := os.environ.get(name):
-            text = text.replace(secret, "[key]")
-    text = " ".join(clean(text).split())
-    return text if len(text) <= 300 else text[:300] + "..."
+def one_line(text: str, *, keep: str = "") -> str:
+    """Error text on one line, without control characters or any key from the environment.
+
+    Text over 300 characters is cut; ``keep`` (a link) follows it in full.
+    """
+
+    def tidy(part: str) -> str:
+        for name in ("ANTHROPIC_API_KEY", "LEXAPI_API_KEY"):
+            if secret := os.environ.get(name, "").strip():
+                part = part.replace(secret, "[key]")
+        return " ".join(clean(part).split())
+
+    message, link = tidy(text), tidy(keep)
+    if len(message) > 300:
+        message = message[:300] + "..."
+    return f"{message} {link}" if link else message
+
+
+def error_fields(error: LexAPIError) -> dict[str, Any]:
+    """What the adapters put after the API's message, from the error's own fields."""
+    return {
+        "resets_at": error.resets_at if isinstance(error, CreditsExhaustedError) else None,
+        "billing_url": error.billing_url if isinstance(error, PaymentPastDueError) else None,
+        "retry_after": error.retry_after,
+    }
+
+
+def refusal_line(
+    text: str,
+    code: str,
+    *,
+    resets_at: str | None = None,
+    billing_url: str | None = None,
+    retry_after: float | None = None,
+) -> str:
+    """The adapter's error line on one line; after a key or credits error without a billing link, the dashboard.
+
+    The adapters end the line with what the error's fields say (credits reset time, billing link, retry
+    delay), in that order. A long message is cut; that end and the dashboard link never are.
+    """
+    tail = [
+        f"Credits reset at {resets_at}." if resets_at else "",
+        f"Billing: {billing_url}" if billing_url else "",
+        f"Retry after {retry_after:g} s." if retry_after is not None else "",
+    ]
+    end = "".join(f" {part}" for part in tail if part)
+    message = text[: len(text) - len(end)] if end and text.endswith(end) else text
+    kept = end if message is not text else ""
+    if code in _DASHBOARD_CODES and not billing_url:
+        kept += f" Dashboard: {DASHBOARD_URL}"
+    return one_line(message, keep=kept)
 
 
 def refusal(error: LexAPIToolError | LexAPIError) -> str:
     """A LexAPI refusal or unreadable answer, in the tools' one-line form for both adapters."""
-    tool_error = error if isinstance(error, LexAPIToolError) else LexAPIToolError.from_sdk(error)
-    return one_line(str(tool_error))
+    if isinstance(error, LexAPIToolError):  # the tools adapter keeps the code and the retry delay
+        return refusal_line(str(error), error.code, retry_after=error.retry_after)
+    tool_error = LexAPIToolError.from_sdk(error)
+    return refusal_line(str(tool_error), tool_error.code, **error_fields(error))
 
 
 def model_failure(error: AnswerError | ModelCallError) -> str:
@@ -359,7 +435,9 @@ def main(
             os.environ["LEXAPI_API_KEY"] = "lex_dry_run_no_key"
             transport = offline.LexAPIMock().transport()
             llm = offline.dry_run_model(bool(args.provision))
-        if llm is None and not args.compare:
+        model_needed = llm is None and not args.compare
+        require_keys(["LEXAPI_API_KEY", *(["ANTHROPIC_API_KEY"] if model_needed else [])])
+        if model_needed:
             llm, model_label = create_llm()
         client = create_client(transport)
     except (ConfigError, offline.FixturesNotFoundError) as error:

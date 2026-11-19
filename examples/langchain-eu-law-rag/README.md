@@ -95,8 +95,11 @@ mock LexAPI and a fake model, so it stays in step with the adapter.
   `[No text: CELEX 32022R2554 art_6 is not established as the text for 2025-01-17 (reason: ...).]`.
   Its source line says `text for <date> not established` and gives the reason, and the output
   prints how many passages have no text for that date. A notice gives only LexAPI's reason for
-  having no text for that date; check the source for whether the provision applied then. A resolved passage's source line says `version for <date>: <CELEX>`.
+  having no text for that date; check the source for whether the provision applied then. A
+  resolved passage's source line says `version for <date>: <CELEX>`.
 - Without `--as-of`, nothing is said about the text for any date.
+- Dates are checked before any request: `YYYY-MM-DD`, a real calendar day, from 1952-01-01 to today
+  (UTC).
 
 ## Install
 
@@ -113,7 +116,7 @@ langchain-lexapi @ git+https://github.com/Lex-API/lexapi-langchain@1680bc3e643d6
 ```bash
 cd examples/langchain-eu-law-rag
 python3 -m venv .venv && . .venv/bin/activate     # Python 3.11+
-pip install -e .                                  # keep -e: --dry-run reads the repository's fixtures
+pip install -e .                                  # keep -e (below)
 
 # No keys: LexAPI is replaced by a local mock and the model by a scripted reply (synthetic texts)
 dora-rag --dry-run "What does DORA say about ICT risk management frameworks?"
@@ -125,6 +128,10 @@ dora-rag "What does DORA say about ICT risk management frameworks?"
 dora-rag --as-of 2025-01-17 "What does DORA say about ICT risk management frameworks?"
 ```
 
+Keep `-e`: `--dry-run` reads the repository's fixtures and `.env` is read from this folder.
+`.env` takes `KEY=value` lines (`export KEY=value` too). A key left empty, or still a placeholder,
+counts as not set: the run stops before any request and names every key that is missing.
+
 The model is Anthropic's `claude-sonnet-5-5` through `langchain-anthropic`; set `ANTHROPIC_MODEL`
 to use another Claude model. To use another provider, replace `create_chat_model` in `cli.py` with
 any LangChain chat model (and add that provider's stop-reason check to `read_answer`).
@@ -135,11 +142,17 @@ configured.
 Exit codes:
 
 - 0: an answer, or "no passages" / "no text", was printed.
-- 1: LexAPI refused the request (for example 402, credits exhausted, or 403, payment past due) or
-  its answer could not be read; the API's message is printed. Also when the model call failed or
-  its reply was not used; then the credits line of the search, which was charged, is printed first.
-- 2: a usage or configuration error: an empty question, a malformed `--as-of` date, a missing
-  `LEXAPI_API_KEY` or `ANTHROPIC_API_KEY`, or `--dry-run` without the repository's fixtures.
+- 1: LexAPI refused the request (for example 401, a key it does not accept; 402, credits
+  exhausted; or 403, payment past due), no answer arrived, or its answer could not be read. One
+  line is printed, in the adapter's form `LexAPI error <code> (HTTP <status>): <message>` (without
+  `(HTTP <status>)` when no answer arrived, for example a connection error), followed on the same
+  line by the billing link, when the credits reset or how long to wait, when the API gives them, and
+  by the dashboard link after a key or credits error. Also when the model call failed or its reply
+  was not used; then the credits line of the search, which was charged, is printed first.
+- 2: a usage or configuration error, before any request: an empty question, a date that is
+  malformed, not a calendar date, in the future (UTC) or before 1952-01-01, a missing, empty or
+  placeholder `LEXAPI_API_KEY` or `ANTHROPIC_API_KEY`, or `--dry-run` without the repository's
+  fixtures.
 
 ## Cost
 
@@ -160,17 +173,21 @@ provider.
 `pytest` runs offline. LexAPI is answered in-process by an `httpx.MockTransport` on an
 `http://127.0.0.1:` base URL, the model is LangChain's `GenericFakeChatModel`, socket connections
 and name lookups for anything but 127.0.0.1 and httpx's real transports fail for the whole session,
-and LangSmith tracing is off. The fixtures are synthetic placeholders, and no test asserts legal
+LangSmith tracing is off, and "today" is fixed. The fixtures are synthetic placeholders, and no test asserts legal
 content. Covered: the request sent (query, `limit`, `include`, `asOf`), `--as-of` and question
 validation, every Source line in the prompt and no text of a withheld passage or of another act,
 the prompt's rules, the source list against the passages, the withheld, reason, left-out and
 credits lines (and "not reported"), no model call when no passage has text, the citation check,
-unusable replies and model-provider errors, 402 and 403 exit codes and messages, sanitised output,
-the API key never printed, the model settings, the client closed after the run, the dry run, and
-the snippet in "The core".
+unusable replies and model-provider errors, 401/402/403/429 and unreadable answers, sanitised output,
+the API key never printed, `.env` reading and an unfilled copy of `.env.example`, "today" in UTC
+whatever the local time zone, the dashboard link after a key or credits error, the model settings,
+the client closed after the run, the dry run, the snippet in "The core", the sample output below,
+and the output lines shared with the LlamaIndex example.
 Not covered by any test: the live API and a real model.
 Until the adapter's repository is public, these tests run locally only (`pip install -e .` needs
 access to it); the CI job checks whether it is reachable and skips with a notice when it is not.
+The tests and `--dry-run` need a checkout of the whole repository: the fixtures are in
+`offline/fixtures` at its root, and some tests compare this example with the other Python one.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
@@ -184,11 +201,13 @@ placeholders from `offline/fixtures`, and the answer is scripted, not written by
 fixture forces the second passage to be withheld, to show what a notice looks like.
 
 ```text
+$ dora-rag --dry-run --show-passages --as-of 2025-01-17 "What does DORA say about ICT risk management frameworks?"
 DRY RUN - LexAPI was replaced by a local mock and the model by a scripted reply.
-The passages given to the model are synthetic placeholders, not the wording of any act.
+The texts and versions are synthetic placeholders, not the wording or the versions of any act.
 
 Question: What does DORA say about ICT risk management frameworks?
-Text asked for: 2025-01-17
+Act: CELEX 32022R2554
+Date asked: 2025-01-17
 Model: scripted (no model was called)
 
 Passages given to the model:
@@ -201,7 +220,7 @@ Source: CELEX 32022R2554, art_5, version for 2025-01-17: 32022R2554, https://eur
 [No text: CELEX 32022R2554 art_6 is not established as the text for 2025-01-17 (reason: fetch_timeout).]
 Source: CELEX 32022R2554, art_6, text for 2025-01-17 not established, https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32022R2554
 
-Answer (written by the model from the passages above):
+Answer (scripted for this dry run; from the passages above):
 The first passage, in the version listed for the date asked, describes a placeholder body that keeps a fixture framework under review [1]. LexAPI has no text of the second provision for that date, so it is not described here [2].
 
 Sources:
@@ -211,7 +230,7 @@ Sources:
 Withheld for 2025-01-17: 1 passage(s) have no text for that date and arrived as a notice.
 A notice gives only LexAPI's reason for having no text for that date; check the source for whether the provision applied then.
 Left out: 1 hit(s) from acts other than DORA.
-LexAPI credits used for this call: 5. Credits remaining: 495.
+LexAPI credits used for this run: 5. Credits remaining: 495.
 
 Research support, not legal advice. The answer is model-written and may misread the passages; check it against the sources.
 ```

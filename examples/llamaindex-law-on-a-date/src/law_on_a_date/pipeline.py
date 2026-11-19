@@ -191,18 +191,43 @@ def _rank(node: NodeWithScore) -> int:
     return 1 if node.node.metadata.get("text_status") == "not_established_for_date" else 0
 
 
+def _other_version(a: NodeWithScore, b: NodeWithScore) -> bool:
+    """Both carry text, from different versions: two passages, not two copies of one.
+
+    Version ids are compared ignoring case. A copy without a version id counts as the same version, so the
+    two stay one passage and the provision's copy wins the tie.
+    """
+    if not (has_text(a) and has_text(b)):
+        return False
+    first, second = (str(n.node.metadata.get("version_celex") or "").strip().upper() for n in (a, b))
+    return bool(first and second and first != second)
+
+
+def other_versions(provision: NodeWithScore | None, nodes: Sequence[NodeWithScore]) -> list[str]:
+    """The versions of the provision's other texts that combine() kept because their version differs."""
+    if provision is None:
+        return []
+    key = _passage_key(provision)
+    return [
+        str(n.node.metadata.get("version_celex"))
+        for n in nodes
+        if _passage_key(n) == key and _other_version(provision, n)
+    ]
+
+
 def combine(provision: NodeWithScore | None, nodes: Sequence[NodeWithScore]) -> list[NodeWithScore]:
     """The provision first, then the retrieved nodes.
 
     A retrieved node for the same passage is not repeated: whichever of the two ranks higher takes the
-    provision's place, so a text is never replaced by a notice.
+    provision's place, so a text is never replaced by a notice. Two texts of the same provision from
+    different versions are both kept.
     """
     if provision is None:
         return list(nodes)
     key = _passage_key(provision)
-    same = [n for n in nodes if _passage_key(n) == key]
+    same = [n for n in nodes if _passage_key(n) == key and not _other_version(provision, n)]
     best = max([provision, *same], key=_rank)  # the provision wins a tie
-    return [best, *(n for n in nodes if _passage_key(n) != key)]
+    return [best, *(n for n in nodes if not any(n is s for s in same))]
 
 
 # ── step 3: the answer ──────────────────────────────────────────────────

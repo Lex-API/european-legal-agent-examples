@@ -18,7 +18,7 @@ FIXTURES_DIR = Path(__file__).resolve().parents[4] / "offline" / "fixtures"
 DRY_RUN_BASE_URL = "http://127.0.0.1:9/api/v1"  # never connected to: requests go to the mock transport
 DRY_RUN_BANNER = (
     "DRY RUN - LexAPI was replaced by a local mock and the model by a scripted reply.\n"
-    "The passages given to the model are synthetic placeholders, not the wording of any act.\n"
+    "The texts and versions are synthetic placeholders, not the wording or the versions of any act.\n"
 )
 
 

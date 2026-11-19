@@ -32,7 +32,8 @@ export class McpLegislationSearch implements LegislationSearch {
   private constructor(private readonly client: Client) {}
 
   static async start(env: NodeJS.ProcessEnv = process.env): Promise<McpLegislationSearch> {
-    if (!env.LEXAPI_API_KEY) throw new Error("LEXAPI_API_KEY is not set.");
+    const apiKey = env.LEXAPI_API_KEY?.trim();
+    if (!apiKey) throw new Error("LEXAPI_API_KEY is not set.");
     // The child process is outside the test harness's fetch guard, so under `node --test`
     // refuse to start it unless it will talk to the local stub.
     if (process.env.NODE_TEST_CONTEXT) assertLocalBaseUrl(env.LEXAPI_BASE_URL);
@@ -41,7 +42,7 @@ export class McpLegislationSearch implements LegislationSearch {
       command: process.execPath,
       args: [serverEntry],
       env: {
-        LEXAPI_API_KEY: env.LEXAPI_API_KEY,
+        LEXAPI_API_KEY: apiKey,
         // Only the read-only tools are needed here.
         LEXAPI_MCP_READ_ONLY: "true",
         ...(env.LEXAPI_BASE_URL ? { LEXAPI_BASE_URL: env.LEXAPI_BASE_URL } : {}),
