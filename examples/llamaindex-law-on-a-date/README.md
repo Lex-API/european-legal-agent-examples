@@ -47,7 +47,8 @@ step, the full prompt (`src/law_on_a_date/prompt.txt`), the same guard (`answer(
 command line, `--compare`, the output and error handling, and `offline.py` the `--dry-run`
 stand-ins. The full pipeline also reads the version and the lookup's credits from the tool's
 `LexAPIToolEvent`. A test runs the snippet above against a mock LexAPI and a scripted LLM, so it
-stays in step with the adapters. Start-up takes a few seconds (importing LlamaIndex).
+stays in step with the adapters. The first run can take up to about 20 seconds while Python
+compiles the libraries; later runs take a few seconds.
 
 It calls `llm.chat` itself rather than a query engine or response synthesizer, so that no model is
 called when no passage has text and the `[n]` in the answer are the numbers in the printed source
@@ -96,7 +97,7 @@ The pipeline is two explicit steps, not an agent: the model never chooses which 
    `unresolved="withhold"`, `emit_withheld=True`). When the search returns the provision too, only
    one copy is kept, in the provision's place: the one with text, by the adapters' rule (a text over a
    labelled latest text over a notice), whichever way `--provision` was written. Two texts of the
-   provision from different versions are both kept.
+   provision from different versions are both kept, and the output says so under the version line.
 3. **What the model sees.** Each passage is `node.get_content(MetadataMode.LLM)`: the node's
    metadata lines (`text_status`, `cite_celex`, `consolidated`, `as_of`, `as_of_resolved`,
    `as_of_reason`, ...; the adapter hides the citation, ids and score from this view), a blank line,
@@ -195,6 +196,8 @@ law-on-a-date --compare 2018-05-25 2024-01-01     # needs LEXAPI_API_KEY only; n
 
 Keep `-e`: `--dry-run` reads the repository's fixtures and `.env` is read from this folder. The dry
 run has fixtures for CELEX 32016R0679 only; with another `--celex` it exits with code 2.
+`.env` takes `KEY=value` lines (`export KEY=value` too). A key left empty, or still a placeholder,
+counts as not set: the run stops before any request and names every key that is missing.
 
 Every run needs `--as-of` (with a question) or `--compare` (two dates, no question).
 
@@ -209,12 +212,17 @@ The model is Anthropic's `claude-sonnet-5-5` through `llama-index-llms-anthropic
 Exit codes:
 
 - 0: an answer, "no passages" / "no text", or the `--compare` result was printed.
-- 1: LexAPI refused a request (for example 402, credits exhausted, or 403, payment past due) or its
-  answer could not be read; the API's message is printed on one line, after the credits line of any
-  earlier call of the run, which was charged. Also when the model call failed or its reply was not
-  used; then the credits line of the LexAPI calls is printed first.
-- 2: a usage or configuration error: an empty question, a malformed, impossible or future date, the
-  same date twice for `--compare`, a malformed `--celex`, a missing `LEXAPI_API_KEY` or
+- 1: LexAPI refused a request (for example 401, a key it does not accept; 402, credits exhausted;
+  or 403, payment past due), no answer arrived, or its answer could not be read. One line is
+  printed, in the adapter's form `LexAPI error <code> (HTTP <status>): <message>` (without
+  `(HTTP <status>)` when no answer arrived, for example a connection error), followed on the same
+  line by the billing link, when the credits reset or how long to wait, when the API gives them, and
+  by the dashboard link after a key or credits error; it comes after the credits line of any earlier
+  call of the run, which was charged. Also when the model call failed or its reply was not used;
+  then the credits line of the LexAPI calls, which were charged, is printed first.
+- 2: a usage or configuration error, before any request: an empty question, a date that is
+  malformed, not a calendar date, in the future (UTC) or before 1952-01-01, the same date twice for
+  `--compare`, a malformed `--celex`, a missing, empty or placeholder `LEXAPI_API_KEY` or
   `ANTHROPIC_API_KEY`, or `--dry-run` without the repository's fixtures or with another act.
 
 ## Cost
@@ -225,8 +233,10 @@ LexAPI credits per run, from the adapters' documentation and the
 | Step | Credits |
 | --- | --- |
 | Version lookup, without `--provision` | 1 |
-| Version lookup with `--provision` | 1; when the provision's text has to be fetched, 4 (5 when fetched live from EUR-Lex), whatever the answer; 1 if that fetch fails or finds no text |
+| Version lookup with `--provision` | 1 when LexAPI already holds the text; 4 when it has to fetch it (5 when fetched live from EUR-Lex), also when the provision then turns out not to be in that version; 1 if the fetch fails or the version has no text |
 | Semantic legislation search with a date | 5, plus up to 3 version fetches at 0-5 each |
+
+The run prints what each call cost.
 
 So a question costs **6-21 credits** without `--provision` and **6-25** with it, in 2 requests.
 `--compare` costs **2 credits** (two version lookups). The `celex` filter and `similarity_top_k=10`
@@ -249,17 +259,22 @@ another act, the metadata lines the model sees, the prompt's rules, the version 
 consolidated, not established), compare's same / different / not compared results and date order,
 the source list against the passages, the withheld, reason, left-out and credits lines (and "not
 reported"), which copy is kept when the search returns the provision too (for each spelling of
-`--provision`), that other provisions, languages, acts and versions are never taken for that copy,
+`--provision`), that other provisions, languages, acts and versions are never taken for that copy
+(and the line saying so when a different version is kept),
 the tool's event read from the adapter's dispatcher and its handler removed after each lookup, no
 model call when no passage has text, the citation check (the LangChain example's
 table, and a test that the two examples' check is the same code), unusable replies and model-provider
 errors, 401/402/403/429/500 and unreadable answers, sanitised output, the API key never printed, the
-model settings, the client closed after the run, the dry run (and its refusal of another act), the
+model settings, `.env` reading and an unfilled copy of `.env.example`, "today" in UTC whatever the
+local time zone, the dashboard link after a key or credits error, the client closed after the run,
+the dry run (and its refusal of another act), the
 snippet in "The core", the sample outputs and the notice block above, and the output lines shared
 with the LangChain example.
 Not covered by any test: the live API and a real model.
 Until the adapters' repository is public, these tests run locally only (`pip install -e .` needs
 access to it); the CI job checks whether it is reachable and skips with a notice when it is not.
+The tests and `--dry-run` need a checkout of the whole repository: the fixtures are in
+`offline/fixtures` at its root, and some tests compare this example with the other Python one.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"

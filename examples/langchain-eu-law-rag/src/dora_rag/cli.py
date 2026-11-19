@@ -23,7 +23,6 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.documents import Document
 from langchain_core.language_models import BaseChatModel
 from langchain_lexapi import LexAPILegislationRetriever, RetrievalReport
-from langchain_lexapi.tools import tool_error
 from lexapi import LexAPI, LexAPIError
 
 from dora_rag import offline
@@ -43,7 +42,8 @@ DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5-5"
 USER_AGENT_SUFFIX = "european-legal-agent-examples"
 LOCAL_PREFIX = "http://127.0.0.1:"
 DASHBOARD_URL = "https://lex-api.com/dashboard?ref=github-examples"
-FIRST_DATE = datetime.date(1952, 1, 1)  # the earliest date LexAPI answers for
+FIRST_DATE = datetime.date(1952, 1, 1)  # the earliest date LexAPI accepts
+ACT = "Act: CELEX"
 DATE_ASKED = "Date asked"
 CREDITS_USED = "LexAPI credits used for this run"
 NOTICE_MEANING = (
@@ -55,6 +55,13 @@ CLOSING = (
     "check it against the sources."
 )
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_EXPORT = re.compile(r"^export\s+")
+_PLACEHOLDER = re.compile(r"your|changeme|change_me|replace|placeholder|[<>]|\.\.\.", re.IGNORECASE)
+_DASHBOARD_CODES = frozenset({"UNAUTHORIZED", "INVALID_API_KEY", "CREDITS_EXHAUSTED"})
+KEY_HELP = {
+    "LEXAPI_API_KEY": f"Create a key at {DASHBOARD_URL} or use --dry-run.",
+    "ANTHROPIC_API_KEY": "Add it to .env or use --dry-run.",
+}
 
 
 class ConfigError(RuntimeError):
@@ -81,23 +88,23 @@ def today() -> datetime.date:
 
 def date_arg(value: str) -> str:
     """argparse type for a date: a real calendar day written YYYY-MM-DD, from 1952-01-01 to today (UTC)."""
-    try:
-        day = datetime.date.fromisoformat(value) if _DATE.match(value) else None
-    except ValueError:
-        day = None
-    if day is None:
+    if not _DATE.fullmatch(value):
         raise argparse.ArgumentTypeError(f"expected a date written YYYY-MM-DD, got {value!r}")
+    try:
+        day = datetime.date.fromisoformat(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{value} is not a calendar date; expected YYYY-MM-DD") from None
     if day > today():
         raise argparse.ArgumentTypeError(f"{value} is in the future; LexAPI answers for dates up to today (UTC)")
     if day < FIRST_DATE:
-        raise argparse.ArgumentTypeError(f"{value} is before {FIRST_DATE}, the earliest date LexAPI answers for")
+        raise argparse.ArgumentTypeError(f"{value} is before {FIRST_DATE}, the earliest date LexAPI accepts")
     return day.isoformat()
 
 
-def question_text(value: str) -> str:
-    """argparse type for the question: not empty or blank."""
+def not_blank(value: str) -> str:
+    """argparse type for a text argument: not empty or blank."""
     if not value.strip():
-        raise argparse.ArgumentTypeError("the question is empty")
+        raise argparse.ArgumentTypeError("the value is empty")
     return value.strip()
 
 
@@ -139,7 +146,7 @@ def render(
     show_passages: bool,
     scripted: bool = False,
 ) -> str:
-    lines = [f"Question: {clean(question)}"]
+    lines = [f"Question: {clean(question)}", f"{ACT} {DORA_CELEX}"]
     if as_of:
         lines.append(f"{DATE_ASKED}: {as_of}")
     lines += [f"Model: {clean(model_label)}", ""]
@@ -174,13 +181,26 @@ def render(
 
 
 def load_env_file(path: Path) -> None:
-    """Load ``KEY=value`` lines into the environment (existing variables win)."""
+    """Load ``KEY=value`` lines (also ``export KEY=value``) into the environment (existing variables win)."""
     if not path.exists():
         return
     for line in path.read_text(encoding="utf-8").splitlines():
-        key, sep, value = line.strip().partition("=")
+        key, sep, value = _EXPORT.sub("", line.strip(), count=1).partition("=")
         if sep and key and not key.startswith("#"):
             os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
+
+
+def env_key(name: str) -> str | None:
+    """The key in the environment variable ``name``; None when it is unset, blank or a placeholder."""
+    value = os.environ.get(name, "").strip()
+    return None if not value or _PLACEHOLDER.search(value) else value
+
+
+def require_keys(names: Sequence[str]) -> None:
+    """Raise ConfigError naming every key in ``names`` that is not set, one line per key."""
+    missing = [name for name in names if env_key(name) is None]
+    if missing:
+        raise ConfigError("\n".join(f"{name} is not set. {KEY_HELP[name]}" for name in missing))
 
 
 def create_client(transport: httpx.BaseTransport | None = None) -> LexAPI:
@@ -188,9 +208,8 @@ def create_client(transport: httpx.BaseTransport | None = None) -> LexAPI:
 
     ``transport`` replaces the network (tests and --dry-run); the base URL must then be a 127.0.0.1 one.
     """
-    api_key = os.environ.get("LEXAPI_API_KEY")
-    if not api_key:
-        raise ConfigError(f"LEXAPI_API_KEY is not set. Create a key at {DASHBOARD_URL} or use --dry-run.")
+    require_keys(["LEXAPI_API_KEY"])
+    api_key = os.environ["LEXAPI_API_KEY"].strip()
     base_url = os.environ.get("LEXAPI_BASE_URL")
     if transport is not None and not (base_url or "").startswith(LOCAL_PREFIX):
         raise RuntimeError(
@@ -204,24 +223,51 @@ def create_client(transport: httpx.BaseTransport | None = None) -> LexAPI:
 
 def create_chat_model() -> tuple[BaseChatModel, str]:
     """Anthropic through langchain-anthropic: ANTHROPIC_API_KEY, ANTHROPIC_MODEL (default claude-sonnet-5-5)."""
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise ConfigError("ANTHROPIC_API_KEY is not set. Add it to .env or use --dry-run.")
+    require_keys(["ANTHROPIC_API_KEY"])
     name = os.environ.get("ANTHROPIC_MODEL") or DEFAULT_ANTHROPIC_MODEL
     return ChatAnthropic(model=name, max_tokens=2000), f"anthropic:{name}"
 
 
-def one_line(text: str) -> str:
-    """Error text on one line, without control characters or any key from the environment."""
-    for name in ("ANTHROPIC_API_KEY", "LEXAPI_API_KEY"):
-        if secret := os.environ.get(name):
-            text = text.replace(secret, "[key]")
-    text = " ".join(clean(text).split())
-    return text if len(text) <= 300 else text[:300] + "..."
+def one_line(text: str, *, keep: str = "") -> str:
+    """Error text on one line, without control characters or any key from the environment.
+
+    Text over 300 characters is cut; ``keep`` (a link) follows it in full.
+    """
+
+    def tidy(part: str) -> str:
+        for name in ("ANTHROPIC_API_KEY", "LEXAPI_API_KEY"):
+            if secret := os.environ.get(name, "").strip():
+                part = part.replace(secret, "[key]")
+        return " ".join(clean(part).split())
+
+    message, link = tidy(text), tidy(keep)
+    if len(message) > 300:
+        message = message[:300] + "..."
+    return f"{message} {link}" if link else message
+
+
+def refusal_line(text: str, code: str) -> str:
+    """The adapter's error line on one line; after a key or credits error without a billing link, the dashboard.
+
+    A long message is cut; the API's billing link and the dashboard link are never cut.
+    """
+    message, billing, rest = text.partition(" Billing: ")
+    link = f"Billing: {rest}" if billing else ""
+    if code in _DASHBOARD_CODES and not billing:
+        link = f"Dashboard: {DASHBOARD_URL}"
+    return one_line(message, keep=link)
+
+
+def adapter_error_text(error: LexAPIError) -> str:
+    """The adapter's one-line text for a LexAPI error: the text its tools raise."""
+    from langchain_lexapi.tools import tool_error
+
+    return str(tool_error(error))
 
 
 def refusal(error: LexAPIError) -> str:
-    """A LexAPI refusal or unreadable answer, in the adapter's one-line form (its tools' error text)."""
-    return one_line(str(tool_error(error)))
+    """A LexAPI refusal or unreadable answer, in the adapter's one-line form."""
+    return refusal_line(adapter_error_text(error), error.code)
 
 
 def model_failure(error: AnswerError | ModelCallError) -> str:
@@ -244,7 +290,7 @@ def main(
     """Exit codes: 0 printed; 1 LexAPI refused, or the model call failed; 2 usage or configuration error."""
     out = out or sys.stdout
     parser = argparse.ArgumentParser(prog="dora-rag", description=(__doc__ or "").splitlines()[0])
-    parser.add_argument("question", type=question_text)
+    parser.add_argument("question", type=not_blank)
     parser.add_argument("--as-of", type=date_arg, metavar="YYYY-MM-DD", help="ask for the text for this date")
     parser.add_argument("--dry-run", action="store_true", help="synthetic fixtures and a scripted reply, no keys")
     parser.add_argument("--show-passages", action="store_true", help="also print the passages given to the model")
@@ -261,6 +307,7 @@ def main(
             os.environ["LEXAPI_API_KEY"] = "lex_dry_run_no_key"
             transport = offline.dry_run_transport()
             chat_model = offline.dry_run_model(args.as_of)
+        require_keys(["LEXAPI_API_KEY", *(["ANTHROPIC_API_KEY"] if chat_model is None else [])])
         if chat_model is None:
             chat_model, model_label = create_chat_model()
         client = create_client(transport)

@@ -40,6 +40,9 @@ TEST_KEY = "lex_offline_test_key_do_not_print_0123456789"
 OFFLINE_ERROR = "Offline tests blocked a real network request"
 TODAY = datetime.date(2026, 6, 30)
 
+REAL_LOAD_ENV_FILE = cli.load_env_file  # the conftest replaces both for every test
+REAL_TODAY = cli.today
+
 _real_connect = socket.socket.connect
 _real_getaddrinfo = socket.getaddrinfo
 

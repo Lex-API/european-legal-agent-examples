@@ -20,6 +20,7 @@ from dora_rag import cli, offline, rag
 QUESTION = "What does the act say about reviewing the framework?"
 AS_OF = "2025-01-17"
 ANSWER = "The first passage describes a placeholder review [1]. The second lists placeholder elements [2]."
+DASHBOARD = " Dashboard: https://lex-api.com/dashboard?ref=github-examples"
 ANSWER_AS_OF = "The first passage describes a placeholder review [1]. There is no text of the second for the date [2]."
 
 
@@ -87,13 +88,13 @@ def test_as_of_is_sent_with_the_search(stub: Stub, capsys: pytest.CaptureFixture
     assert stub.bodies() == [
         {"query": f"{rag.DORA_CONTEXT}: {QUESTION}", "limit": 10, "include": ["text"], "asOf": AS_OF}
     ]
-    assert out.splitlines()[1] == f"Date asked: {AS_OF}"
+    assert out.splitlines()[1:3] == ["Act: CELEX 32022R2554", f"Date asked: {AS_OF}"]
 
 
 @pytest.mark.parametrize(
     ("value", "message"),
     [
-        ("2025-02-30", "expected a date written YYYY-MM-DD, got '2025-02-30'"),
+        ("2025-02-30", "2025-02-30 is not a calendar date; expected YYYY-MM-DD"),
         ("17/01/2025", "expected a date written YYYY-MM-DD, got '17/01/2025'"),
         ("2025-1-17", "expected a date written YYYY-MM-DD, got '2025-1-17'"),
         ("2025-01-17T00:00", "expected a date written YYYY-MM-DD, got '2025-01-17T00:00'"),
@@ -101,7 +102,7 @@ def test_as_of_is_sent_with_the_search(stub: Stub, capsys: pytest.CaptureFixture
         ("tomorrow", "expected a date written YYYY-MM-DD, got 'tomorrow'"),
         ("2026-07-01", "2026-07-01 is in the future; LexAPI answers for dates up to today (UTC)"),
         ("2099-06-01", "2099-06-01 is in the future; LexAPI answers for dates up to today (UTC)"),
-        ("1951-12-31", "1951-12-31 is before 1952-01-01, the earliest date LexAPI answers for"),
+        ("1951-12-31", "1951-12-31 is before 1952-01-01, the earliest date LexAPI accepts"),
     ],
 )
 def test_an_invalid_as_of_is_refused_before_any_request(
@@ -131,7 +132,7 @@ def test_an_empty_question_is_refused_before_any_request(
     with pytest.raises(SystemExit) as exit_info:
         cli.main([question], transport=stub.transport(), chat_model=model)
     assert exit_info.value.code == 2
-    assert "the question is empty" in capsys.readouterr().err
+    assert "argument question: the value is empty" in capsys.readouterr().err
     assert stub.requests == []
     assert model.seen == []
 
@@ -493,12 +494,16 @@ CREDITS_EXHAUSTED_WITH_RESET = {
 @pytest.mark.parametrize(
     ("status", "body", "printed"),
     [
-        (402, CREDITS_EXHAUSTED, "LexAPI error CREDITS_EXHAUSTED (HTTP 402): Credit pool exhausted.\n"),
+        (
+            402,
+            CREDITS_EXHAUSTED,
+            "LexAPI error CREDITS_EXHAUSTED (HTTP 402): Credit pool exhausted." + DASHBOARD + "\n",
+        ),
         (
             402,
             CREDITS_EXHAUSTED_WITH_RESET,
             "LexAPI error CREDITS_EXHAUSTED (HTTP 402): Credit pool exhausted."
-            " Credits reset at 2026-07-01T00:00:00Z.\n",
+            " Credits reset at 2026-07-01T00:00:00Z." + DASHBOARD + "\n",
         ),
         (
             403,
@@ -534,7 +539,7 @@ def test_a_key_echoed_by_the_api_is_masked(capsys: pytest.CaptureFixture[str]) -
     code, _out, err = run(Stub(reply=lambda _b: (401, body)), fake_model(ANSWER), capsys=capsys)
     assert code == 1
     assert TEST_KEY not in err
-    assert err == "LexAPI error UNAUTHORIZED (HTTP 401): Invalid key lex_***.\n"
+    assert err == "LexAPI error UNAUTHORIZED (HTTP 401): Invalid key lex_***." + DASHBOARD + "\n"
 
 
 def test_a_retry_delay_from_the_api_is_on_the_same_line(

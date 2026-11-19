@@ -13,7 +13,9 @@ export function loadEnvFile(path: string): void {
  */
 export function createLexApiClient(env: NodeJS.ProcessEnv = process.env): LexAPI {
   if (!env.LEXAPI_API_KEY) {
-    throw new Error("LEXAPI_API_KEY is not set. Create a key at https://lex-api.com/dashboard or run with --dry-run.");
+    throw new Error(
+      "LEXAPI_API_KEY is not set. Create a key at https://lex-api.com/dashboard?ref=github-examples or run with --dry-run.",
+    );
   }
   return new LexAPI({
     apiKey: env.LEXAPI_API_KEY,

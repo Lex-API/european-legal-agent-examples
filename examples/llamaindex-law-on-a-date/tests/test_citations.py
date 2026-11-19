@@ -166,8 +166,11 @@ def _definitions(path: Path) -> dict[str, str]:
 
 
 def test_the_citation_check_is_the_langchain_examples() -> None:
+    sibling = EXAMPLES / "langchain-eu-law-rag"
+    if not sibling.is_dir():
+        pytest.skip("needs examples/langchain-eu-law-rag from the repository checkout")
     ours = _definitions(EXAMPLES / "llamaindex-law-on-a-date" / "src" / "law_on_a_date" / "pipeline.py")
-    theirs = _definitions(EXAMPLES / "langchain-eu-law-rag" / "src" / "dora_rag" / "rag.py")
+    theirs = _definitions(sibling / "src" / "dora_rag" / "rag.py")
     for name in SHARED:
         assert ours[name] == theirs[name], name
     assert rag.NO_ANSWER == "The passages do not answer this question."

@@ -5,17 +5,20 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import pytest
+
 EXAMPLES = Path(__file__).resolve().parents[2]
 OURS = EXAMPLES / "llamaindex-law-on-a-date" / "src" / "law_on_a_date"
 THEIRS = EXAMPLES / "langchain-eu-law-rag" / "src" / "dora_rag"
 SHARED = {
     "cli.py": (
-        *("DEFAULT_ANTHROPIC_MODEL", "USER_AGENT_SUFFIX", "LOCAL_PREFIX", "DASHBOARD_URL"),
-        *("FIRST_DATE", "DATE_ASKED", "CREDITS_USED", "NOTICE_MEANING", "CLOSING", "_DATE", "ConfigError"),
-        *("clean", "today", "date_arg", "answer_heading", "load_env_file", "create_client", "one_line"),
-        "model_failure",
+        *("DEFAULT_ANTHROPIC_MODEL", "USER_AGENT_SUFFIX", "LOCAL_PREFIX", "DASHBOARD_URL", "KEY_HELP"),
+        *("FIRST_DATE", "ACT", "DATE_ASKED", "CREDITS_USED", "NOTICE_MEANING", "CLOSING", "ConfigError"),
+        *("_DATE", "_EXPORT", "_PLACEHOLDER", "_DASHBOARD_CODES"),
+        *("clean", "today", "date_arg", "not_blank", "answer_heading", "load_env_file", "env_key"),
+        *("require_keys", "create_client", "one_line", "refusal_line", "model_failure"),
     ),
-    "offline.py": ("DRY_RUN_BASE_URL",),
+    "offline.py": ("DRY_RUN_BASE_URL", "DRY_RUN_BANNER", "FixturesNotFoundError", "read_fixture"),
 }
 SHARED_PIPELINE = ("NO_ANSWER", "HUMAN_PROMPT", "AnswerError", "NoTextError", "ModelCallError")
 
@@ -32,6 +35,8 @@ def _definitions(path: Path) -> dict[str, str]:
 
 
 def test_the_shared_output_is_the_langchain_examples() -> None:
+    if not THEIRS.is_dir():
+        pytest.skip("needs examples/langchain-eu-law-rag from the repository checkout")
     for module, names in SHARED.items():
         ours, theirs = _definitions(OURS / module), _definitions(THEIRS / module)
         for name in names:

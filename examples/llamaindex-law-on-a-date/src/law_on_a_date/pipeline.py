@@ -192,11 +192,27 @@ def _rank(node: NodeWithScore) -> int:
 
 
 def _other_version(a: NodeWithScore, b: NodeWithScore) -> bool:
-    """Both carry text, from different versions: two passages, not two copies of one."""
+    """Both carry text, from different versions: two passages, not two copies of one.
+
+    Version ids are compared ignoring case. A copy without a version id counts as the same version, so the
+    two stay one passage and the provision's copy wins the tie.
+    """
     if not (has_text(a) and has_text(b)):
         return False
     first, second = (str(n.node.metadata.get("version_celex") or "").strip().upper() for n in (a, b))
     return bool(first and second and first != second)
+
+
+def other_versions(provision: NodeWithScore | None, nodes: Sequence[NodeWithScore]) -> list[str]:
+    """The versions of the provision's other texts that combine() kept because their version differs."""
+    if provision is None:
+        return []
+    key = _passage_key(provision)
+    return [
+        str(n.node.metadata.get("version_celex"))
+        for n in nodes
+        if _passage_key(n) == key and _other_version(provision, n)
+    ]
 
 
 def combine(provision: NodeWithScore | None, nodes: Sequence[NodeWithScore]) -> list[NodeWithScore]:
