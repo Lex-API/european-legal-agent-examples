@@ -16,6 +16,7 @@ answer - with a check in code that every citation points at a source that was ac
 | [GDPR research assistant](examples/gdpr-research-assistant) | Python | Ask a question; get quotations from the GDPR and CJEU judgments with CELEX / ECLI and links, optionally for the text in force on a date. | 12-20 (up to 35 with `--as-of`) |
 | [Regulatory change monitor](examples/regulatory-change-monitor) | TypeScript | Watch acts and topics for new or changed documents; get a cited digest. Polling by default, signed webhooks on paid plans. | 8 for the example watch list |
 | [DORA questions answered from cited passages](examples/langchain-eu-law-rag) | Python (LangChain) | RAG over EU law with LangChain: ask about DORA; the official retriever fetches the articles, each with its Source line (CELEX, article, EUR-Lex link), and the model answers with `[1]`-style citations. Optionally for a date: passages without text for that date arrive as notices. Prints the credits used. | 5 (up to 20 with `--as-of`) |
+| [EU law for a date, from cited passages](examples/llamaindex-law-on-a-date) | Python (LlamaIndex) | EU law for a date with LlamaIndex: name an act and a date; the official LexAPI tools return the version listed for that date and, for a named provision, its text, each with its Source line; passages whose text for that date is not established arrive as notices. A model answers from the passages with `[1]`-style citations. Compare two dates. Prints the credits used. | 6-25 (2 with `--compare`) |
 
 Credit figures are computed from the weights in the
 [API reference](https://lex-api.com/docs?ref=github-examples); each example's README shows the
@@ -40,11 +41,12 @@ The Python examples have their own setup; see their READMEs.
 You need:
 
 - Node.js 20.12 or later (TypeScript examples; CI runs Node 20 and 22) and/or Python 3.10 or
-  later (Python examples; the LangChain example needs 3.11 or later; CI runs Python 3.12).
+  later (Python examples; the LangChain and LlamaIndex examples need 3.11 or later; CI runs Python 3.12).
 - A LexAPI key from the [dashboard](https://lex-api.com/dashboard?ref=github-examples).
 - A model provider key. Adapters are included for Anthropic (default model `claude-sonnet-5-5`,
   override with `ANTHROPIC_MODEL`) and OpenAI (`LLM_PROVIDER=openai` and `OPENAI_MODEL`). The
-  LangChain example uses Anthropic only, through `langchain-anthropic`.
+  LangChain example uses Anthropic only, through `langchain-anthropic`, and the LlamaIndex example
+  through `llama-index-llms-anthropic`.
 
 Copy the example's `.env.example` to `.env`, fill it in, and run the command in its README.
 
@@ -57,8 +59,9 @@ on FREE, and webhooks need a paid plan (the change monitor's polling mode does n
 
 ## How the examples stay grounded
 
-This section describes the first three examples. The LangChain example is a plain retrieval
-pipeline: the model writes free text citing passages as `[n]`, and code checks only its citations:
+This section describes the first three examples. The LangChain and LlamaIndex examples are plain
+retrieval pipelines: the model writes free text citing passages as `[n]`, and code checks only its
+citations (the same check in both):
 any bracketed token made only of numeric characters and separators must be exactly `[n]` naming a
 retrieved passage, and the answer must cite at least one unless it says the passages do not answer
 the question (see its README).
@@ -110,7 +113,7 @@ it cites. That is why the quotes are always shown next to it.
 ## What is tested
 
 The test suites run offline. They use a local stub server on 127.0.0.1 (in-process mock transport
-for the LangChain example) that replays synthetic fixtures shaped like the API's responses, and a
+for the LangChain and LlamaIndex examples) that replays synthetic fixtures shaped like the API's responses, and a
 scripted stand-in for the model. They refuse to run against any base URL that does not start with
 `http://127.0.0.1:`.
 
@@ -144,7 +147,10 @@ figures. The script refuses to run without the flag, inside a test run, or on a 
 Built against `@lexapi/client` 0.4.0 (npm), `lexapi-client` 0.4.0 (PyPI) and `@lexapi/mcp` 0.5.1.
 The LangChain example is built against `langchain-lexapi` 0.1.0 (installed from its repository at
 commit `1680bc3`, which brings its own pinned `lexapi-client`), `langchain-core` 1.8.3 and
-`langchain-anthropic` 1.7.11.
+`langchain-anthropic` 1.7.11. The LlamaIndex example is built against `llama-index-retrievers-lexapi`
+and `llama-index-tools-lexapi` 0.1.0 (installed from their repository at commit `a85f7e2`, which
+brings its own pinned `lexapi-client`), `llama-index-core` 0.14.26 and `llama-index-llms-anthropic`
+0.13.0.
 
 ## Security
 
