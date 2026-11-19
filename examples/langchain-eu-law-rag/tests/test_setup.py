@@ -169,69 +169,49 @@ def test_today_is_the_utc_date_whatever_the_local_zone(
         cli.date_arg("2026-07-01")
 
 
-# ── LexAPI errors on one line ───────────────────────────────────────────
+# ── LexAPI errors: the adapter's line, then the dashboard link ──────────
 
 
 @pytest.mark.parametrize("code", ["UNAUTHORIZED", "INVALID_API_KEY", "CREDITS_EXHAUSTED"])
-def test_a_key_or_credits_error_ends_with_the_dashboard_link(code: str) -> None:
-    line = cli.refusal_line(f"LexAPI error {code} (HTTP 402): Placeholder.", code)
-    assert line == f"LexAPI error {code} (HTTP 402): Placeholder. {DASHBOARD}"
+def test_a_key_or_credits_error_is_followed_by_the_dashboard_link_on_its_own_line(code: str) -> None:
+    text = f"LexAPI error {code} (HTTP 402): Placeholder."
+    assert cli.refusal_lines(text, code) == f"{text}\n{DASHBOARD}"
 
 
 BILLING_URL = "https://lex-api.com/dashboard#billing"
 
 
-def test_other_errors_and_billing_errors_get_no_dashboard_link() -> None:
-    assert cli.refusal_line("LexAPI error RATE_LIMITED (HTTP 429): Slow down.", "RATE_LIMITED") == (
-        "LexAPI error RATE_LIMITED (HTTP 429): Slow down."
-    )
-    billing = f"LexAPI error CREDITS_EXHAUSTED (HTTP 402): Placeholder. Billing: {BILLING_URL}"
-    assert cli.refusal_line(billing, "CREDITS_EXHAUSTED", billing_url=BILLING_URL) == billing
+@pytest.mark.parametrize("code", ["RATE_LIMITED", "QUOTA_EXHAUSTED", "PAYMENT_PAST_DUE", "TIER_FORBIDDEN", "INTERNAL"])
+def test_other_errors_get_no_dashboard_link(code: str) -> None:
+    text = f"LexAPI error {code} (HTTP 403): Placeholder. Billing: {BILLING_URL}"
+    assert cli.refusal_lines(text, code) == text
 
 
-def test_billing_text_in_the_message_does_not_suppress_the_dashboard_link() -> None:
-    message = "LexAPI error CREDITS_EXHAUSTED (HTTP 402): Placeholder Billing: not a link " + "x" * 1000 + "."
-    line = cli.refusal_line(message, "CREDITS_EXHAUSTED")
-    assert line.endswith("... " + DASHBOARD)
-    assert len(line) == 303 + 1 + len(DASHBOARD)
-
-
-def test_the_fields_after_a_long_message_are_kept_whole() -> None:
+def test_the_adapters_text_is_printed_whole() -> None:
     end = f" Credits reset at 2026-07-01T00:00:00Z. Billing: {BILLING_URL} Retry after 7 s."
-    text = "LexAPI error PAYMENT_PAST_DUE (HTTP 403): " + "x" * 1000 + "." + end
-    line = cli.refusal_line(
-        text, "PAYMENT_PAST_DUE", resets_at="2026-07-01T00:00:00Z", billing_url=BILLING_URL, retry_after=7.0
-    )
-    assert line.endswith("..." + end)
-    assert len(line) == 303 + len(end)
+    text = "LexAPI error CREDITS_EXHAUSTED (HTTP 402): " + "x" * 1000 + "." + end
+    assert cli.refusal_lines(text, "CREDITS_EXHAUSTED") == f"{text}\n{DASHBOARD}"
+
+
+def test_a_key_from_the_environment_is_masked_in_the_error_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    key = "sk-ant-api03-" + "Zq" * 20
+    monkeypatch.setenv("ANTHROPIC_API_KEY", key)
+    assert cli.refusal_lines(f"LexAPI error X (HTTP 400): {key} more.", "X") == "LexAPI error X (HTTP 400): [key] more."
 
 
 def test_a_key_across_the_cut_stays_masked(monkeypatch: pytest.MonkeyPatch) -> None:
     key = "sk-ant-api03-" + "Zq" * 20
     monkeypatch.setenv("ANTHROPIC_API_KEY", key)
-    line = cli.refusal_line("LexAPI error X (HTTP 400): " + "x" * 270 + key + " more.", "X")
+    line = cli.one_line("The model call failed (X): " + "x" * 270 + key + " more.")
     assert line.endswith("x[ke...")  # masked first, then cut
     assert not any(key[i : i + 4] in line for i in range(len(key) - 3))
 
 
-def test_control_characters_in_a_billing_link_are_removed() -> None:
-    url = "https://lex-api.com/\x1b[2Jbilling\u202e"
-    line = cli.refusal_line(f"LexAPI error P (HTTP 403): Due. Billing: {url}", "P", billing_url=url)
-    assert "\x1b" not in line and "\u202e" not in line and line.endswith("Billing: https://lex-api.com/ [2Jbilling")
-
-
-@pytest.mark.parametrize(
-    ("tail", "code", "kept"),
-    [
-        (" Billing: https://lex-api.com/dashboard#billing", "PAYMENT_PAST_DUE", f"Billing: {BILLING_URL}"),
-        ("", "CREDITS_EXHAUSTED", DASHBOARD),
-    ],
-)
-def test_a_long_message_is_cut_but_never_its_link(tail: str, code: str, kept: str) -> None:
-    billing = BILLING_URL if tail else None
-    line = cli.refusal_line(f"LexAPI error {code} (HTTP 402): " + "x" * 1000 + "." + tail, code, billing_url=billing)
-    assert line.endswith("... " + kept)
-    assert len(line) == 303 + 1 + len(kept)
+def test_control_characters_in_the_error_text_are_removed() -> None:
+    url = "https://lex-api.com/\x1b[2Jbilling‮"
+    line = cli.refusal_lines(f"LexAPI error P (HTTP 403): Due.\nBilling: {url}", "P")
+    assert "\x1b" not in line and "‮" not in line and "\n" not in line
+    assert line.endswith("Due. Billing: https://lex-api.com/ [2Jbilling")
 
 
 def test_a_connection_error_is_one_line_without_an_http_status(monkeypatch: pytest.MonkeyPatch, capsys: Any) -> None:

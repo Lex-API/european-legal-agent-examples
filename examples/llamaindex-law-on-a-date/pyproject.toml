@@ -10,8 +10,10 @@ requires-python = ">=3.11"
 license = "MIT"
 dependencies = [
   # Not on PyPI yet: installed from their repository, pinned to a commit.
-  "llama-index-retrievers-lexapi @ git+https://github.com/Lex-API/lexapi-llamaindex@a85f7e22535182bf65032748b6e43c383cba640c#subdirectory=llama-index-retrievers-lexapi",
-  "llama-index-tools-lexapi @ git+https://github.com/Lex-API/lexapi-llamaindex@a85f7e22535182bf65032748b6e43c383cba640c#subdirectory=llama-index-tools-lexapi",
+  # TODO(release): replace with "llama-index-retrievers-lexapi>=0.1.0,<0.2" and
+  # "llama-index-tools-lexapi>=0.1.0,<0.2" once 0.1.0 is on PyPI.
+  "llama-index-retrievers-lexapi @ git+https://github.com/Lex-API/lexapi-llamaindex@8e0bbb9f59546591808c609c9c59af78e43ffd37#subdirectory=llama-index-retrievers-lexapi",
+  "llama-index-tools-lexapi @ git+https://github.com/Lex-API/lexapi-llamaindex@8e0bbb9f59546591808c609c9c59af78e43ffd37#subdirectory=llama-index-tools-lexapi",
   "llama-index-core==0.14.26",
   "llama-index-llms-anthropic==0.13.0",
   "anthropic==2.10.0",

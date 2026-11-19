@@ -12,6 +12,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { LexAPI, WebhookCreateRequest } from "@lexapi/client";
 import { createLexApiClient, loadEnvFile } from "../../../shared/env.ts";
+import { reportLexapiError } from "../../../shared/lexapi-error.ts";
 import { loadWatchlist, type Watchlist } from "./watchlist.ts";
 
 /** One webhook: the watched acts as a watch list, plus the first topic as `documents.new` criteria. */
@@ -46,8 +47,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   }
   const ownList = join(here, "watchlist.json");
   const watchlist = loadWatchlist(existsSync(ownList) ? ownList : join(here, "watchlist.example.json"));
-  const result = await setUpWebhook(createLexApiClient(), watchlist, url);
-  console.log(`Webhook ${result.id} created.`);
-  console.log(`Test delivery: ${result.test}`);
-  console.log(`\nSecret (shown once - store it as LEXAPI_WEBHOOK_SECRET, never commit it):\n${result.secret ?? "(not returned)"}`);
+  try {
+    const result = await setUpWebhook(createLexApiClient(), watchlist, url);
+    console.log(`Webhook ${result.id} created.`);
+    console.log(`Test delivery: ${result.test}`);
+    console.log(`\nSecret (shown once - store it as LEXAPI_WEBHOOK_SECRET, never commit it):\n${result.secret ?? "(not returned)"}`);
+  } catch (error) {
+    reportLexapiError(error); // a refused LexAPI call: one line, exit code 1
+  }
 }

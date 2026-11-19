@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { DRY_RUN_BANNER, startDryRun } from "../../../offline/dry-run.ts";
 import { createLexApiClient, loadEnvFile } from "../../../shared/env.ts";
+import { reportLexapiError } from "../../../shared/lexapi-error.ts";
 import { createLlmFromEnv, type Llm } from "../../../shared/llm.ts";
 import { findProvisions } from "./agent.ts";
 import { McpLegislationSearch } from "./retrieve-mcp.ts";
@@ -54,6 +55,8 @@ try {
     `LexAPI credits reported for this run: ${result.credits}.` +
       (values.via === "mcp" ? ` The MCP tool result does not carry them; ${result.queries.length} search(es) cost 5 credits each.` : ""),
   );
+} catch (error) {
+  reportLexapiError(error); // a refused LexAPI call: one line, exit code 1
 } finally {
   await search.close();
   await closeDryRun?.();

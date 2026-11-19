@@ -93,6 +93,15 @@ an excerpt is quoted in context, or that the summary reads the sources correctly
   latest one held.
 - Without `--as-of`, the output makes no statement about the text in force on any date.
 
+## Install
+
+`lexapi-client` 0.5.0 is not on PyPI yet. `pyproject.toml` installs it from its repository, pinned
+to a commit, so installing this example needs `git`:
+
+```
+lexapi-client @ git+https://github.com/Lex-API/lexapi-python@e48dfdadf8fb4c2a05f4c6ec08f79146177a515e
+```
+
 ## Run it
 
 ```bash
@@ -108,6 +117,11 @@ cp .env.example .env                              # then fill it in
 gdpr-assistant "When may personal data be transferred to a third country?"
 gdpr-assistant --as-of 2019-06-01 "When may personal data be transferred to a third country?"
 ```
+
+If LexAPI refuses a request (for example 402, credits exhausted; 403, payment past due; or 429, a
+rate limit or an exhausted quota), the run stops, prints one line with the SDK's own error text,
+`LexAPI error: [<code>] <message> (HTTP <status>)`, and exits with code 1. The SDK retries a rate
+limit before that; nothing else is added to the line.
 
 ## Cost
 
@@ -132,8 +146,9 @@ usage is billed separately by your model provider.
 "no supporting text" paths, rejection and retry of an ungrounded draft, a draft shaped like a fake
 quoted section, every path by which model text reaches the output, ten well-behaved drafts, the
 sources-only fallback, "not reported" credits, paragraph selection, the grounding rules (from
-`shared/grounding-vectors.json`, which the TypeScript suite runs too), and the model adapters
-against fake provider clients.
+`shared/grounding-vectors.json`, which the TypeScript suite runs too), the model adapters
+against fake provider clients, and the line printed when LexAPI refuses a request (credits
+exhausted, an exhausted quota, payment past due, a rate limit).
 Not covered by any test: the live API and a real model.
 
 ## Sample output (illustrative)

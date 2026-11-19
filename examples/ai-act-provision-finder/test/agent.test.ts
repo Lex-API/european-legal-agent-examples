@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
-import { LexAPI } from "@lexapi/client";
+import { LexAPI, LexAPIError, TierForbiddenError } from "@lexapi/client";
 import { readFixture, startStubServer, type StubServer } from "../../../offline/stub-server.ts";
-import { offlineEnv, startOfflineApi } from "../../../offline/test-harness.ts";
+import { assertLocalBaseUrl } from "../../../offline/guard.ts";
+import { REFUSALS, offlineEnv, startOfflineApi } from "../../../offline/test-harness.ts";
 import { createLexApiClient } from "../../../shared/env.ts";
+import { lexapiErrorLine } from "../../../shared/lexapi-error.ts";
 import { statesConclusion } from "../../../shared/conclusions.ts";
 import { ScriptedLlm } from "../../../shared/llm.ts";
 import { CONCLUSION_PATTERNS, findProvisions } from "../src/agent.ts";
@@ -362,4 +364,31 @@ test("MCP route: text cut by the tool loses its marker, is labelled, and the cut
     await search.close();
     await longStub.close();
   }
+});
+
+for (const [name, refusal] of Object.entries(REFUSALS)) {
+  test(`a ${name} answer stops the run with the SDK's own text on one line`, async () => {
+    const refusing = await startStubServer({ override: () => refusal });
+    try {
+      const client = createLexApiClient({ LEXAPI_API_KEY: "lex_offline_test_key", LEXAPI_BASE_URL: assertLocalBaseUrl(refusing.baseUrl) });
+      const llm = new ScriptedLlm(script());
+      const error = await findProvisions(DESCRIPTION, { llm, search: new SdkLegislationSearch(client) }).then(
+        () => undefined,
+        (thrown: unknown) => thrown,
+      );
+      assert.ok(error instanceof LexAPIError);
+      assert.equal(lexapiErrorLine(error, "lex_offline_test_key"), refusal.printed);
+      // Nothing is added: no wait, no link, and a failed payment is not a plan gate to upgrade.
+      assert.doesNotMatch(lexapiErrorLine(error), /retry|https?:|upgrade/i);
+      if (name === "past due") assert.ok(error instanceof TierForbiddenError && error.code === "PAYMENT_PAST_DUE");
+      assert.equal(refusing.requests.length, refusal.attempts); // the first search only; only a rate limit is retried
+    } finally {
+      await refusing.close();
+    }
+  });
+}
+
+test("the error line removes control characters and masks the key", () => {
+  const error = new LexAPIError("INTERNAL", "placeholder\u001b[2J\u202e lex_offline_test_key\nmore", 500);
+  assert.equal(lexapiErrorLine(error, "lex_offline_test_key"), "LexAPI error: [INTERNAL] placeholder [2J [key] more (HTTP 500)");
 });

@@ -1,7 +1,7 @@
 # Offline fixtures
 
 These files are **synthetic**. They follow the response shapes of the LexAPI REST API as
-typed by the official SDKs (`@lexapi/client` 0.4.0, `lexapi-client` 0.4.0) and described in the
+typed by the official SDKs (`@lexapi/client` and `lexapi-client`, the builds the examples pin) and described in the
 [API reference](https://lex-api.com/docs?ref=github-examples), but none of them was recorded from
 the live API, and the legal texts in them are placeholders, not the wording of any act or judgment.
 Every placeholder text starts with `[SYNTHETIC FIXTURE`.

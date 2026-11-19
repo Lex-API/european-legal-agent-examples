@@ -19,7 +19,7 @@ from typing import Any, TextIO
 
 import anthropic
 import httpx
-from lexapi import CreditsExhaustedError, LexAPI, LexAPIError, PaymentPastDueError
+from lexapi import LexAPI, LexAPIError
 from lexapi.passages import Passage, format_citation
 from llama_index.core.llms import LLM
 from llama_index.core.schema import NodeWithScore
@@ -319,65 +319,36 @@ def create_llm() -> tuple[LLM, str]:
     return Anthropic(model=name, max_tokens=2000, api_key=env_key("ANTHROPIC_API_KEY")), f"anthropic:{name}"
 
 
-def one_line(text: str, *, keep: str = "") -> str:
-    """Error text on one line, without control characters or any key from the environment.
+def tidy(text: str) -> str:
+    """Text on one line, without control characters or any key from the environment."""
+    for name in ("ANTHROPIC_API_KEY", "LEXAPI_API_KEY"):
+        if secret := os.environ.get(name, "").strip():
+            text = text.replace(secret, "[key]")
+    return " ".join(clean(text).split())
 
-    Text over 300 characters is cut; ``keep`` (a link) follows it in full.
+
+def one_line(text: str) -> str:
+    """Error text on one line, without control characters or any key from the environment; cut after 300 characters."""
+    line = tidy(text)
+    return line[:300] + "..." if len(line) > 300 else line
+
+
+def refusal_lines(text: str, code: str) -> str:
+    """The adapter's error text, whole, on its own line; after a key or credits error, the dashboard link on the next.
+
+    The adapters already put the API's strings on one line and cap them, so nothing is cut here.
     """
-
-    def tidy(part: str) -> str:
-        for name in ("ANTHROPIC_API_KEY", "LEXAPI_API_KEY"):
-            if secret := os.environ.get(name, "").strip():
-                part = part.replace(secret, "[key]")
-        return " ".join(clean(part).split())
-
-    message, link = tidy(text), tidy(keep)
-    if len(message) > 300:
-        message = message[:300] + "..."
-    return f"{message} {link}" if link else message
-
-
-def error_fields(error: LexAPIError) -> dict[str, Any]:
-    """What the adapters put after the API's message, from the error's own fields."""
-    return {
-        "resets_at": error.resets_at if isinstance(error, CreditsExhaustedError) else None,
-        "billing_url": error.billing_url if isinstance(error, PaymentPastDueError) else None,
-        "retry_after": error.retry_after,
-    }
-
-
-def refusal_line(
-    text: str,
-    code: str,
-    *,
-    resets_at: str | None = None,
-    billing_url: str | None = None,
-    retry_after: float | None = None,
-) -> str:
-    """The adapter's error line on one line; after a key or credits error without a billing link, the dashboard.
-
-    The adapters end the line with what the error's fields say (credits reset time, billing link, retry
-    delay), in that order. A long message is cut; that end and the dashboard link never are.
-    """
-    tail = [
-        f"Credits reset at {resets_at}." if resets_at else "",
-        f"Billing: {billing_url}" if billing_url else "",
-        f"Retry after {retry_after:g} s." if retry_after is not None else "",
-    ]
-    end = "".join(f" {part}" for part in tail if part)
-    message = text[: len(text) - len(end)] if end and text.endswith(end) else text
-    kept = end if message is not text else ""
-    if code in _DASHBOARD_CODES and not billing_url:
-        kept += f" Dashboard: {DASHBOARD_URL}"
-    return one_line(message, keep=kept)
+    lines = [tidy(text)]
+    if code in _DASHBOARD_CODES:
+        lines.append(f"Dashboard: {DASHBOARD_URL}")
+    return "\n".join(lines)
 
 
 def refusal(error: LexAPIToolError | LexAPIError) -> str:
-    """A LexAPI refusal or unreadable answer, in the tools' one-line form for both adapters."""
-    if isinstance(error, LexAPIToolError):  # the tools adapter keeps the code and the retry delay
-        return refusal_line(str(error), error.code, retry_after=error.retry_after)
-    tool_error = LexAPIToolError.from_sdk(error)
-    return refusal_line(str(tool_error), tool_error.code, **error_fields(error))
+    """A LexAPI refusal or unreadable answer: the tools' own text (for both adapters), then the dashboard link where it
+    helps."""
+    tool_error = error if isinstance(error, LexAPIToolError) else LexAPIToolError.from_sdk(error)
+    return refusal_lines(str(tool_error), tool_error.code)
 
 
 def model_failure(error: AnswerError | ModelCallError) -> str:

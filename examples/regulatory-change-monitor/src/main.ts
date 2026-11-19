@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { DRY_RUN_BANNER, startDryRun } from "../../../offline/dry-run.ts";
 import { createLexApiClient, loadEnvFile } from "../../../shared/env.ts";
+import { reportLexapiError } from "../../../shared/lexapi-error.ts";
 import { createLlmFromEnv, type Llm } from "../../../shared/llm.ts";
 import { buildDigest } from "./digest.ts";
 import { poll } from "./poll.ts";
@@ -54,6 +55,8 @@ try {
   if (values["dry-run"]) console.log(DRY_RUN_BANNER);
   console.log(digest.markdown);
   console.error(`LexAPI credits reported for this run: ${result.credits}.`);
+} catch (error) {
+  reportLexapiError(error); // a refused LexAPI call: one line, exit code 1; the state file is not changed
 } finally {
   await closeDryRun?.();
 }

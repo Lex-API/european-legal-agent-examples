@@ -11,9 +11,10 @@ import argparse
 import json
 import os
 import sys
+import unicodedata
 from pathlib import Path
 
-from lexapi import LexAPI
+from lexapi import LexAPI, LexAPIError
 
 from gdpr_assistant.agent import answer_question
 from gdpr_assistant.llm import Llm, ScriptedLlm, create_llm_from_env
@@ -45,7 +46,20 @@ def create_client() -> LexAPI:
     return LexAPI(api_key, user_agent_suffix=suffix)
 
 
+def lexapi_error_line(error: LexAPIError) -> str:
+    """One line for a refused or failed LexAPI call: the SDK's own text, ``[CODE] message (HTTP status)``.
+
+    Control characters become spaces and the key from the environment is masked; nothing is added.
+    """
+    text = "".join(" " if unicodedata.category(ch) in ("Cc", "Cf", "Zl", "Zp") else ch for ch in str(error))
+    key = os.environ.get("LEXAPI_API_KEY", "").strip()
+    if key:
+        text = text.replace(key, "[key]")
+    return "LexAPI error: " + " ".join(text.split())
+
+
 def main(argv: list[str] | None = None) -> int:
+    """Exit codes: 0 printed; 1 LexAPI refused a request or the call failed; 2 usage error."""
     parser = argparse.ArgumentParser(prog="gdpr-assistant", description=__doc__.splitlines()[0])
     parser.add_argument("question")
     parser.add_argument("--as-of", metavar="YYYY-MM-DD", help="ask for the text in force on this date")
@@ -67,6 +81,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         with create_client() as client:
             result = answer_question(args.question, client=client, llm=llm, as_of=args.as_of)
+    except LexAPIError as error:
+        print(lexapi_error_line(error), file=sys.stderr)
+        return 1
     finally:
         if stub:
             stub.close()

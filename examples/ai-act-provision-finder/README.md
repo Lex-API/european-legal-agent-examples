@@ -102,6 +102,12 @@ npm run ai-act -- "A SaaS tool that ranks job applicants' CVs and chats with can
 
 Options: `--max-queries N` (1-3, default 3), `--via mcp` (below).
 
+If LexAPI refuses a request (for example 402, credits exhausted; 403, payment past due; or 429, a
+rate limit or an exhausted quota), the run stops, prints one line with the SDK's own error text,
+`LexAPI error: [<code>] <message> (HTTP <status>)`, and exits with code 1. The SDK retries a rate
+limit before that; nothing else is added to the line. With `--via mcp`, the run stops with the MCP
+tool's own error text instead.
+
 ### The MCP route
 
 `--via mcp` runs the same loop but retrieves through the LexAPI MCP server instead of the SDK:
@@ -134,7 +140,8 @@ through the SDK and through the real `@lexapi/mcp` server process, the two "no s
 paths, rejection and retry of an ungrounded draft, a draft and a search query shaped like a fake
 quoted section, every path by which model text reaches the output, ten well-behaved drafts in
 the styles models write, the sources-only fallback, removal of conclusion statements, the query
-bound, and the MCP truncation handling. The grounding rules themselves are tested from
+bound, the MCP truncation handling, and the line printed when LexAPI refuses a search (credits
+exhausted, an exhausted quota, payment past due, a rate limit). The grounding rules themselves are tested from
 `shared/grounding-vectors.json`, which the Python suite runs too. Not covered by any test: the live API and a real model.
 
 ## Sample output (illustrative)

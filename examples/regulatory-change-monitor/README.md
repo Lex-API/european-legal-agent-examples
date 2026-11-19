@@ -41,6 +41,12 @@ npm run monitor                  # for real, with your own keys; schedule it wit
 
 Polling does not detect new consolidated versions; webhook watch lists do.
 
+If LexAPI refuses a request (for example 402, credits exhausted; 403, payment past due; or 429, a
+rate limit or an exhausted quota), the run stops, prints one line with the SDK's own error text,
+`LexAPI error: [<code>] <message> (HTTP <status>)`, leaves the state file unchanged and exits with
+code 1. The SDK retries a rate limit before that; nothing else is added to the line.
+`npm run monitor:webhook-setup` does the same.
+
 ## The digest and its grounding
 
 `src/digest.ts` prints the list of documents in code, straight from the API records, each with
@@ -119,7 +125,8 @@ and of a summary shaped like Markdown, removal of advice, hostile strings in rec
 payloads, ten well-behaved summaries, "not reported" credits, signature verification (valid,
 tampered, wrong secret, missing, re-serialised body, stale timestamp, empty secret), duplicate
 deliveries and the bound on remembered ids, the HTTP receiver on 127.0.0.1 (200, 401, 405, 413),
-and webhook setup against the stub. Not covered by any test: the live API, real deliveries and a real model.
+webhook setup against the stub, and the line printed when LexAPI refuses a poll (credits exhausted,
+an exhausted quota, payment past due, a rate limit). Not covered by any test: the live API, real deliveries and a real model.
 
 ## Sample output (illustrative)
 

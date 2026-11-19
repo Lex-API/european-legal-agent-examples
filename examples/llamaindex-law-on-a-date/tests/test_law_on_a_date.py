@@ -25,7 +25,7 @@ ARTICLE = "https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32016R
 CONSOLIDATED = "https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:02016R0679-20990101"
 ANSWER = "The provision describes a placeholder request [1]. Another passage a placeholder objection [2]."
 ANSWER_3 = ANSWER + " There is no text of the third for the date [3]."
-DASHBOARD = " Dashboard: https://lex-api.com/dashboard?ref=github-examples"
+DASHBOARD = "\nDashboard: https://lex-api.com/dashboard?ref=github-examples"  # a line of its own
 
 
 def run(
@@ -702,16 +702,8 @@ ERRORS: dict[int, dict[str, Any]] = {
 @pytest.mark.parametrize(
     ("status", "printed"),
     [
-        (
-            401,
-            "LexAPI error INVALID_API_KEY (HTTP 401): Invalid API key."
-            " Dashboard: https://lex-api.com/dashboard?ref=github-examples",
-        ),
-        (
-            402,
-            "LexAPI error CREDITS_EXHAUSTED (HTTP 402): Credit pool exhausted."
-            " Dashboard: https://lex-api.com/dashboard?ref=github-examples",
-        ),
+        (401, "LexAPI error INVALID_API_KEY (HTTP 401): Invalid API key." + DASHBOARD),
+        (402, "LexAPI error CREDITS_EXHAUSTED (HTTP 402): Credit pool exhausted." + DASHBOARD),
         (
             403,
             "LexAPI error PAYMENT_PAST_DUE (HTTP 403): Payment past due: Your subscription payment failed, so API"
@@ -741,9 +733,72 @@ def test_a_refused_search_prints_the_lookup_credits_first(capsys: pytest.Capture
     assert code == 1 and out == ""
     assert err.splitlines() == [
         "LexAPI credits used for this run: 4 (version lookup: 4). Credits remaining: 496.",
-        "LexAPI error CREDITS_EXHAUSTED (HTTP 402): Credit pool exhausted." + DASHBOARD,
+        "LexAPI error CREDITS_EXHAUSTED (HTTP 402): Credit pool exhausted.",
+        "Dashboard: https://lex-api.com/dashboard?ref=github-examples",
     ]
     assert len(stub.requests) == 2  # not retried
+
+
+# The four answers that stop a run for a while, with every field the API sends for them.
+STOPPED: dict[str, tuple[int, dict[str, Any], str]] = {
+    "credits": (
+        402,
+        {
+            "success": False,
+            "error": {
+                "code": "CREDITS_EXHAUSTED",
+                "message": "Credit pool exhausted",
+                "details": {"operation": "legislation_as_of", "weight": 1, "available": 0},
+            },
+            "resetsAt": "2026-07-01T00:00:00Z",
+        },
+        "LexAPI error CREDITS_EXHAUSTED (HTTP 402): Credit pool exhausted. Credits reset at 2026-07-01T00:00:00Z."
+        + DASHBOARD,
+    ),
+    "quota": (
+        429,
+        {
+            "success": False,
+            "code": "QUOTA_EXHAUSTED",
+            "error": "Daily quota exceeded",
+            "message": "The daily call quota of this plan is used up.",
+            "usage": {"resetsAt": "2026-07-01T00:00:00Z"},
+        },
+        "LexAPI error QUOTA_EXHAUSTED (HTTP 429): Daily quota exceeded: The daily call quota of this plan is used up."
+        " This is an exhausted quota, not a rate limit. Quota resets at 2026-07-01T00:00:00Z.",
+    ),
+    "past due": (
+        403,
+        {**ERRORS[403], "accessEndedAt": "2026-06-20T00:00:00Z"},
+        "LexAPI error PAYMENT_PAST_DUE (HTTP 403): Payment past due: Your subscription payment failed, so API"
+        " requests are refused. Access ended at 2026-06-20T00:00:00Z. Billing: https://lex-api.com/dashboard#billing",
+    ),
+    "rate limit": (
+        429,
+        {**ERRORS[429], "retryAfter": 7},
+        "LexAPI error RATE_LIMITED (HTTP 429): Too many requests. Retry after 7 s.",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(STOPPED))
+@pytest.mark.parametrize("call", ["as-of", "semantic"])
+def test_credits_quota_payment_and_rate_limit_print_the_tools_text(
+    case: str, call: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("lexapi.client.time.sleep", lambda seconds: None)  # the SDK retries a rate limit
+    status, body, printed = STOPPED[case]
+    stub = Stub(replies={call: lambda _body: (status, body)})
+    code, out, err = ask(stub, scripted(ANSWER), capsys=capsys)
+
+    assert code == 1 and out == ""
+    lines = err.splitlines()
+    if call == "semantic":  # the lookup before it was charged
+        assert lines.pop(0) == "LexAPI credits used for this run: 4 (version lookup: 4). Credits remaining: 496."
+    assert "\n".join(lines) == printed
+    assert "upgrade" not in err.lower()
+    refused = [r for r in stub.requests if r.url.path.endswith("/as-of" if call == "as-of" else "/semantic")]
+    assert len(refused) == (4 if case == "rate limit" else 1)  # only a rate limit is retried
 
 
 @pytest.mark.parametrize("missing", ["act", "provenance"])

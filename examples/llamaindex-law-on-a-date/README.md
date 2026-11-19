@@ -171,8 +171,8 @@ On an Intel Mac, `pyproject.toml` also pins `cryptography` below 49: `llama-inde
 needs it, and from 49.0.0 it ships macOS wheels for Apple silicon only.
 
 ```
-llama-index-retrievers-lexapi @ git+https://github.com/Lex-API/lexapi-llamaindex@a85f7e22535182bf65032748b6e43c383cba640c#subdirectory=llama-index-retrievers-lexapi
-llama-index-tools-lexapi @ git+https://github.com/Lex-API/lexapi-llamaindex@a85f7e22535182bf65032748b6e43c383cba640c#subdirectory=llama-index-tools-lexapi
+llama-index-retrievers-lexapi @ git+https://github.com/Lex-API/lexapi-llamaindex@8e0bbb9f59546591808c609c9c59af78e43ffd37#subdirectory=llama-index-retrievers-lexapi
+llama-index-tools-lexapi @ git+https://github.com/Lex-API/lexapi-llamaindex@8e0bbb9f59546591808c609c9c59af78e43ffd37#subdirectory=llama-index-tools-lexapi
 ```
 
 ## Run it
@@ -213,13 +213,18 @@ Exit codes:
 
 - 0: an answer, "no passages" / "no text", or the `--compare` result was printed.
 - 1: LexAPI refused a request (for example 401, a key it does not accept; 402, credits exhausted;
-  or 403, payment past due), no answer arrived, or its answer could not be read. One line is
-  printed, in the adapter's form `LexAPI error <code> (HTTP <status>): <message>` (without
-  `(HTTP <status>)` when no answer arrived, for example a connection error), followed on the same
-  line by the billing link, when the credits reset or how long to wait, when the API gives them, and
-  by the dashboard link after a key or credits error; it comes after the credits line of any earlier
-  call of the run, which was charged. Also when the model call failed or its reply was not used;
-  then the credits line of the LexAPI calls, which were charged, is printed first.
+  403, payment past due; or 429, a rate limit or an exhausted quota), no answer arrived, or its
+  answer could not be read. The tools' own error text is printed, on one line (`str()` of
+  `LexAPIToolError`, also for an error from the retriever):
+  `LexAPI error <code> (HTTP <status>): <message>.` (without `(HTTP <status>)` when no answer
+  arrived, for example a connection error), then, each only when it applies and in this order,
+  `Credits reset at <time>.`, `This is an exhausted quota, not a rate limit.` (and
+  `Quota resets at <time>.`), `Access ended at <time>.`, `Billing: <link>` and
+  `Retry after <n> s.` (only for an error LexAPI's client retries, such as a rate limit). After a
+  key or credits error, the example adds the dashboard link on a line of its own. The credits line
+  of any earlier call of the run, which was charged, comes first. Also when the model call failed
+  or its reply was not used; then the credits line of the LexAPI calls, which were charged, is
+  printed first.
 - 2: a usage or configuration error, before any request: an empty question, a date that is
   malformed, not a calendar date, in the future (UTC) or before 1952-01-01, the same date twice for
   `--compare`, a malformed `--celex`, a missing, empty or placeholder `LEXAPI_API_KEY` or
@@ -264,7 +269,8 @@ reported"), which copy is kept when the search returns the provision too (for ea
 the tool's event read from the adapter's dispatcher and its handler removed after each lookup, no
 model call when no passage has text, the citation check (the LangChain example's
 table, and a test that the two examples' check is the same code), unusable replies and model-provider
-errors, 401/402/403/429/500 and unreadable answers, sanitised output, the API key never printed, the
+errors, 401/402/403/429/500 (credits, quota, payment past due and rate limit, each with its exact
+line, for the lookup and for the search) and unreadable answers, sanitised output, the API key never printed, the
 model settings, `.env` reading and an unfilled copy of `.env.example`, "today" in UTC whatever the
 local time zone, the dashboard link after a key or credits error, the client closed after the run,
 the dry run (and its refusal of another act), the

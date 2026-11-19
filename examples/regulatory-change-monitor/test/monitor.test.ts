@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
-import { LexAPI, computeSignature } from "@lexapi/client";
+import { LexAPI, LexAPIError, computeSignature } from "@lexapi/client";
 import { readFixture, startStubServer, type StubServer } from "../../../offline/stub-server.ts";
-import { offlineEnv, startOfflineApi } from "../../../offline/test-harness.ts";
+import { assertLocalBaseUrl } from "../../../offline/guard.ts";
+import { REFUSALS, offlineEnv, startOfflineApi } from "../../../offline/test-harness.ts";
 import { createLexApiClient } from "../../../shared/env.ts";
+import { lexapiErrorLine } from "../../../shared/lexapi-error.ts";
 import { ScriptedLlm } from "../../../shared/llm.ts";
 import { buildDigest, type Digest } from "../src/digest.ts";
 import { CONSOLIDATED_NOTE } from "../src/items.ts";
@@ -308,3 +310,22 @@ test("webhook setup: creates one webhook from the watch list and sends a test de
   assert.deepEqual(stub.requests.map((r) => `${r.method} ${r.path}`), ["POST /webhooks", "POST /webhooks/wh_fixture_0001/test"]);
   assert.deepEqual(JSON.parse(stub.requests[0]?.body ?? "{}").watchCelex, ["32016R0679", "32024R1689"]);
 });
+
+for (const [name, refusal] of Object.entries(REFUSALS)) {
+  test(`a ${name} answer stops a poll with the SDK's own text on one line`, async () => {
+    const refusing = await startStubServer({ override: () => refusal });
+    try {
+      const client = createLexApiClient({ LEXAPI_API_KEY: "lex_offline_test_key", LEXAPI_BASE_URL: assertLocalBaseUrl(refusing.baseUrl) });
+      const error = await poll(client, watchlist, emptyState(), NOW).then(
+        () => undefined,
+        (thrown: unknown) => thrown,
+      );
+      assert.ok(error instanceof LexAPIError);
+      assert.equal(lexapiErrorLine(error, "lex_offline_test_key"), refusal.printed);
+      assert.doesNotMatch(lexapiErrorLine(error), /retry|https?:|upgrade/i);
+      assert.equal(refusing.requests.length, refusal.attempts); // the first request only; only a rate limit is retried
+    } finally {
+      await refusing.close();
+    }
+  });
+}

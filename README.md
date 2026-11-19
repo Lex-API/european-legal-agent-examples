@@ -133,6 +133,7 @@ examples/   one folder per example (README, .env.example, source, tests)
 shared/     TypeScript pieces the examples share: grounding check, model adapters, env
 offline/    stub server, synthetic fixtures, dry-run and test harness
 scripts/    record-fixtures (calls the real API; never run by tests or CI)
+vendor/     a build of @lexapi/client from its repository, until that version is on npm
 ```
 
 ### Recording real response shapes
@@ -144,13 +145,15 @@ today, `npm run record-fixtures -- --i-have-a-key` makes the calls the examples 
 folder is git-ignored: the files contain real legal texts and your account's plan and usage
 figures. The script refuses to run without the flag, inside a test run, or on a CI runner.
 
-Built against `@lexapi/client` 0.4.0 (npm), `lexapi-client` 0.4.0 (PyPI) and `@lexapi/mcp` 0.5.1.
-The LangChain example is built against `langchain-lexapi` 0.1.0 (installed from its repository at
-commit `1680bc3`, which brings its own pinned `lexapi-client`), `langchain-core` 1.8.3 and
-`langchain-anthropic` 1.7.11. The LlamaIndex example is built against `llama-index-retrievers-lexapi`
-and `llama-index-tools-lexapi` 0.1.0 (installed from their repository at commit `a85f7e2`, which
-brings its own pinned `lexapi-client`), `llama-index-core` 0.14.26 and `llama-index-llms-anthropic`
-0.13.0.
+Built against the next releases of the official SDKs, which are not on npm and PyPI yet:
+`@lexapi/client` from its repository at commit `4f3761b` (a build of that commit is in
+[`vendor/`](vendor/README.md)), `lexapi-client` from its repository at commit `e48dfda`, and
+`@lexapi/mcp` 0.5.1 (npm). The LangChain example is built against `langchain-lexapi` 0.1.0
+(installed from its repository at commit `77b1bef`, which brings its own pinned `lexapi-client`,
+the same commit), `langchain-core` 1.8.3 and `langchain-anthropic` 1.7.11. The LlamaIndex example is
+built against `llama-index-retrievers-lexapi` and `llama-index-tools-lexapi` 0.1.0 (installed from
+their repository at commit `8e0bbb9`, which brings its own pinned `lexapi-client`, the same commit),
+`llama-index-core` 0.14.26 and `llama-index-llms-anthropic` 0.13.0.
 
 ## Security
 

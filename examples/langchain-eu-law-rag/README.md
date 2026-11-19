@@ -108,7 +108,7 @@ repository, pinned to a commit, so installing this example needs that repository
 Until it is public, installing needs GitHub access to that repository (for example `gh auth login`).
 
 ```
-langchain-lexapi @ git+https://github.com/Lex-API/lexapi-langchain@1680bc3e643d601eee36ba811d3d24c1ab0aa6d3
+langchain-lexapi @ git+https://github.com/Lex-API/lexapi-langchain@77b1befd49e361a07a5b522aff3c00fd6d98ebfe
 ```
 
 ## Run it
@@ -143,12 +143,17 @@ Exit codes:
 
 - 0: an answer, or "no passages" / "no text", was printed.
 - 1: LexAPI refused the request (for example 401, a key it does not accept; 402, credits
-  exhausted; or 403, payment past due), no answer arrived, or its answer could not be read. One
-  line is printed, in the adapter's form `LexAPI error <code> (HTTP <status>): <message>` (without
-  `(HTTP <status>)` when no answer arrived, for example a connection error), followed on the same
-  line by the billing link, when the credits reset or how long to wait, when the API gives them, and
-  by the dashboard link after a key or credits error. Also when the model call failed or its reply
-  was not used; then the credits line of the search, which was charged, is printed first.
+  exhausted; 403, payment past due; or 429, a rate limit or an exhausted quota), no answer arrived,
+  or its answer could not be read. The adapter's own error text is printed, on one line (from
+  `langchain_lexapi.tools.tool_error`, the text its tools raise):
+  `LexAPI error <code> (HTTP <status>): <message>.` (without `(HTTP <status>)` when no answer
+  arrived, for example a connection error), then, each only when it applies and in this order,
+  `Credits reset at <time>.`, `This is an exhausted quota, not a rate limit.` (and
+  `Quota resets at <time>.`), `Access ended at <time>.`, `Billing: <link>` and
+  `Retry after <n> s.` (only for an error LexAPI's client retries, such as a rate limit). After a
+  key or credits error, the example adds the dashboard link on a line of its own. Also when the
+  model call failed or its reply was not used; then the credits line of the search, which was
+  charged, is printed first.
 - 2: a usage or configuration error, before any request: an empty question, a date that is
   malformed, not a calendar date, in the future (UTC) or before 1952-01-01, a missing, empty or
   placeholder `LEXAPI_API_KEY` or `ANTHROPIC_API_KEY`, or `--dry-run` without the repository's
@@ -178,7 +183,8 @@ content. Covered: the request sent (query, `limit`, `include`, `asOf`), `--as-of
 validation, every Source line in the prompt and no text of a withheld passage or of another act,
 the prompt's rules, the source list against the passages, the withheld, reason, left-out and
 credits lines (and "not reported"), no model call when no passage has text, the citation check,
-unusable replies and model-provider errors, 401/402/403/429 and unreadable answers, sanitised output,
+unusable replies and model-provider errors, 401/402/403/429 (credits, quota, payment past due and rate
+limit, each with its exact line) and unreadable answers, sanitised output,
 the API key never printed, `.env` reading and an unfilled copy of `.env.example`, "today" in UTC
 whatever the local time zone, the dashboard link after a key or credits error, the model settings,
 the client closed after the run, the dry run, the snippet in "The core", the sample output below,
