@@ -59,6 +59,16 @@ await runCli(
     }
 
     let search: LegislationSearch | undefined;
+    // Ctrl-C or a termination signal: stop the MCP server process first, so it does not outlive this one.
+    const stop = (signal: NodeJS.Signals, code: number) =>
+      process.once(signal, () => {
+        console.error("Interrupted.");
+        void Promise.resolve(search?.close())
+          .catch(() => {})
+          .finally(() => process.exit(code));
+      });
+    stop("SIGINT", 130);
+    stop("SIGTERM", 143);
     try {
       search = values.via === "mcp" ? await McpLegislationSearch.start() : new SdkLegislationSearch(createLexApiClient());
       const result = await findProvisions(description, { llm, search }, { maxQueries, tally });

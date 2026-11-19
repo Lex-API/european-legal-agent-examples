@@ -160,7 +160,8 @@ figures. The script refuses to run without the flag, inside a test run, or on a 
   `langchain-anthropic` 1.7.11.
 - EU law for a date (LlamaIndex): `llama-index-retrievers-lexapi` and `llama-index-tools-lexapi`
   0.1.0 from their repository at commit `8e0bbb9` (not published yet; they bring `lexapi-client` at
-  the same commit `e48dfda`), `llama-index-core` 0.14.26 and `llama-index-llms-anthropic` 0.13.0.
+  the same commit `e48dfda`), `llama-index-core` 0.14.26, `llama-index-llms-anthropic` 0.13.0 and
+  `anthropic` 1.17.0 (`llama-index-llms-anthropic` 0.13.0 does not work with `anthropic` 2.x).
 
 ## Security
 

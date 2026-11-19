@@ -45,7 +45,7 @@ export class AnthropicLlm implements Llm {
           messages,
       })
         .catch((error: unknown) => {
-          throw new LlmError(providerMessage(error)); // the provider refused or could not be reached
+          throw new LlmError(providerMessage(error, "ANTHROPIC_API_KEY")); // the provider refused or could not be reached
         });
 
       if (response.stop_reason === "refusal") {

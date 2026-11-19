@@ -38,16 +38,26 @@ export class LlmError extends Error {
 }
 
 /**
- * The provider's own message for a failed model call: the `error.message` of
- * an API error body when there is one, else the error's message. The caller
- * cleans, caps and masks it.
+ * The provider's own message for a failed model call: the `error.message` of its error body
+ * when there is one; otherwise `HTTP <status>: <the response text>` for an HTTP error, else the
+ * error's message. After a 401 or 403 it names the variable that holds the key (never the key).
+ * The caller cleans, caps and masks it.
  */
-export function providerMessage(error: unknown): string {
-  const body = (error as { error?: unknown }).error;
+export function providerMessage(error: unknown, keyVariable?: string): string {
+  const failure = error as { error?: unknown; status?: unknown; message?: unknown };
+  const body = failure?.error;
   const inner = body && typeof body === "object" ? (body as { error?: { message?: unknown }; message?: unknown }) : undefined;
-  const message = inner?.error?.message ?? inner?.message;
-  if (typeof message === "string" && message.trim()) return message;
-  return error instanceof Error ? error.message : String(error);
+  const field = inner?.error?.message ?? inner?.message;
+  const status = typeof failure?.status === "number" ? failure.status : undefined;
+  const text = error instanceof Error ? error.message : String(error);
+  let message: string;
+  if (typeof field === "string" && field.trim()) message = field;
+  else if (status !== undefined) message = `HTTP ${status}: ${text.replace(new RegExp(`^${status}\\s*`), "") || "no message"}`;
+  else message = text;
+  if ((status === 401 || status === 403) && keyVariable) {
+    message = `${message.replace(/[: ]+$/, "")}${/[.!?]$/.test(message.trim()) ? "" : "."} Check ${keyVariable}.`;
+  }
+  return message;
 }
 
 type ScriptedReply = unknown | ((request: LlmRequest) => unknown);

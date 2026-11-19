@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import type { LexAPI, WebhookCreateRequest } from "@lexapi/client";
 import { ConfigError, missingSettings, runCli } from "../../../shared/cli.ts";
 import { createLexApiClient, loadEnvFile } from "../../../shared/env.ts";
-import { PrintedError, UnreadableAnswerError, clean, mask, maskSecrets } from "../../../shared/lexapi-error.ts";
+import { PrintedError, UnreadableAnswerError, clean, mask } from "../../../shared/lexapi-error.ts";
 import { loadWatchlist, type Watchlist } from "./watchlist.ts";
 
 /** One webhook: the watched acts as a watch list, plus the first topic as `documents.new` criteria. */
@@ -42,12 +42,24 @@ export function createdButNotTested(id: string): string {
   );
 }
 
-/** A test delivery whose result is not a success, with the delivery's own status and message. */
-export function deliveryFailed(delivery: { status?: unknown; responseStatus?: unknown; errorMessage?: unknown } | undefined): string {
+/**
+ * A test delivery whose result is not a success, with the delivery's own status and message.
+ * When the answer's fields disagree (`success` not true, but the status says SUCCESS), it says
+ * the delivery is not confirmed and shows both, rather than "SUCCESS".
+ */
+export function deliveryFailed(
+  success: unknown,
+  delivery: { status?: unknown; responseStatus?: unknown; errorMessage?: unknown } | undefined,
+): string {
   const status = clean(delivery?.status, 200) ?? "unknown";
-  const http = typeof delivery?.responseStatus === "number" ? ` (HTTP ${delivery.responseStatus})` : "";
+  const httpCode = typeof delivery?.responseStatus === "number" ? delivery.responseStatus : undefined;
   const message = clean(delivery?.errorMessage, 300);
-  return mask(`Test delivery: ${status}${http}${message ? ` - ${message}` : ""}`);
+  if (status === "SUCCESS" || status === "unknown") {
+    const said = success === undefined ? "missing" : (clean(String(success), 200) ?? "missing");
+    const http = httpCode === undefined ? "" : `, HTTP ${httpCode}`;
+    return mask(`Test delivery: not confirmed (success: ${said}, status: ${status}${http})${message ? ` - ${message}` : ""}`);
+  }
+  return mask(`Test delivery: ${status}${httpCode === undefined ? "" : ` (HTTP ${httpCode})`}${message ? ` - ${message}` : ""}`);
 }
 
 /**
@@ -78,7 +90,7 @@ export async function setUpWebhook(
     test = await client.webhooks.test(id);
     if (!test?.delivery || typeof test.delivery !== "object") throw new UnreadableAnswerError(200);
     // Success, as the SDK types it: `success: true` and a delivery with status SUCCESS.
-    if (test.success !== true || test.delivery.status !== "SUCCESS") throw new PrintedError(deliveryFailed(test.delivery));
+    if (test.success !== true || test.delivery.status !== "SUCCESS") throw new PrintedError(deliveryFailed(test.success, test.delivery));
   } catch (error) {
     console.error(createdButNotTested(id));
     throw error;
@@ -110,7 +122,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       },
       (answer) => {
         // Whatever came back, the secret included: it may belong to a webhook that now exists.
-        console.log(`The answer to the create, as returned:\n${maskSecrets(JSON.stringify(answer, null, 2) ?? String(answer))}`);
+        console.log(`The answer to the create (its body and the SDK's response metadata, API keys masked):\n${mask(JSON.stringify(answer, null, 2) ?? String(answer))}`);
       },
     );
     console.log(`Test delivery: ${result.test}`);

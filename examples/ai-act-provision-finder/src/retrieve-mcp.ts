@@ -12,7 +12,6 @@
  */
 import { createRequire } from "node:module";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { McpError } from "@modelcontextprotocol/sdk/types.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { assertLocalBaseUrl } from "../../../offline/guard.ts";
 import { ConfigError, LEXAPI_KEY_MISSING, envKey } from "../../../shared/cli.ts";
@@ -98,9 +97,9 @@ export class McpLegislationSearch implements LegislationSearch {
         this.requestTimeoutMs === undefined ? undefined : { timeout: this.requestTimeoutMs },
       );
     } catch (error) {
-      // The server process closed the connection (-32000) or did not answer in time (-32001).
-      if (error instanceof McpError) throw new McpServerError(error.message);
-      throw error;
+      // The server process closed the connection (-32000), did not answer in time (-32001), or was
+      // already gone ("Not connected"): every failure of the MCP client or its transport.
+      throw new McpServerError(error instanceof Error ? error.message : String(error));
     }
     const blocks = Array.isArray(result.content) ? (result.content as Array<{ type: string; text?: string }>) : [];
     const text = blocks.find((block) => block.type === "text")?.text ?? "";
@@ -118,7 +117,12 @@ export class McpLegislationSearch implements LegislationSearch {
     return { hits: hits.map(stripTruncation), credits: undefined };
   }
 
+  /** Stop the MCP server process. */
   async close(): Promise<void> {
-    await this.client.close();
+    try {
+      await this.client.close();
+    } catch (error) {
+      throw new McpServerError(error instanceof Error ? error.message : String(error));
+    }
   }
 }

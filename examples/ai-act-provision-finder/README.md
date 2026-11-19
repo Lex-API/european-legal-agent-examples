@@ -117,12 +117,17 @@ Nothing is printed on stdout; stderr gets one line per problem:
   `LexAPI error INVALID_RESPONSE (HTTP 200): The answer could not be read.` When earlier calls of
   the run were charged, their credits line comes first.
 - **The model provider failed**: `Model error: <the provider's message>`, capped at 1,000
-  characters.
+  characters; `Model error: HTTP <status>: <the response text>` when the answer carries no
+  message; after a rejected key (401 or 403) it names the variable to check, never the key.
 - **A key or setting is missing or invalid**: one line naming it, before any request. `LLM_PROVIDER`
   is trimmed and its case ignored; empty means `anthropic`; any value but `anthropic` or `openai` is
   a configuration error.
-- **The MCP server process ended or did not answer in time** (`--via mcp`):
-  `MCP server error: <message>`; the server process is stopped.
+- **The MCP server process failed** (`--via mcp`: it could not be started, ended before or during
+  a call, or did not answer in time): `MCP server error: <message>`, exit code 1.
+
+With `--via mcp`, Ctrl-C or a termination signal stops the MCP server process before the example
+exits (exit code 130 or 143); a SIGKILL of the example cannot be handled, so the server process
+may then outlive it.
 
 The SDK retries rate limits and gateway or connection errors by itself (up to 3 retries, each wait
 capped at 30 s) and waits up to 95 s for each answer, so a refused or hanging call can take a
@@ -170,7 +175,10 @@ against the stub and a local stand-in for the model API (exit code, stdout empty
 for each refusal (credits exhausted, an exhausted quota, payment past due, a rate limit), a refusal
 after a charged search, an unreadable answer, a model-provider error, missing keys (exit 2, no
 request), an unknown `LLM_PROVIDER`, and through the MCP route a refusal (also after a charged
-search), an unreadable answer, a server process that dies mid-call and one that does not answer. The grounding rules themselves are tested from
+search), an unreadable answer, a server process killed before the first call, between two calls
+and during a call, one that does not answer, and Ctrl-C and SIGTERM (the server process does not
+outlive the example), and a real run through the OpenAI client. `shared/llm.test.ts` sends the
+real Anthropic and OpenAI clients' requests to the local stand-in. The grounding rules themselves are tested from
 `shared/grounding-vectors.json`, which the Python suite runs too. Not covered by any test: the live API and a real model.
 
 ## Sample output (illustrative)

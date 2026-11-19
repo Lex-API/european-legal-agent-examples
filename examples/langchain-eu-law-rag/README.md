@@ -193,7 +193,8 @@ content. Covered: the request sent (query, `limit`, `include`, `asOf`), `--as-of
 validation, every Source line in the prompt and no text of a withheld passage or of another act,
 the prompt's rules, the source list against the passages, the withheld, reason, left-out and
 credits lines (and "not reported"), no model call when no passage has text, the citation check,
-unusable replies and model-provider errors, 401/402/403/429 (credits, quota, payment past due and rate
+the real `ChatAnthropic` sending its request to a local stand-in for the Anthropic API (and its
+errors), unusable replies and model-provider errors, 401/402/403/429 (credits, quota, payment past due and rate
 limit, each with its exact line) and unreadable answers, sanitised output,
 the API key never printed, `.env` reading and an unfilled copy of `.env.example`, "today" in UTC
 whatever the local time zone, the dashboard link after any 401 and after credits exhausted, the model settings,

@@ -63,18 +63,22 @@ export function runExample(entry: string, args: string[], env: Record<string, st
 }
 
 export interface FakeModel {
-  /** `http://127.0.0.1:<port>` - pass as `ANTHROPIC_BASE_URL`. */
+  /** `http://127.0.0.1:<port>` - pass as `ANTHROPIC_BASE_URL`, or with `/v1` as `OPENAI_BASE_URL`. */
   baseUrl: string;
   requests: number;
   close(): Promise<void>;
 }
 
+/** An error answer: a provider error body with `message`, or `raw` text (an HTML page from a proxy). */
+export type ModelFault = { status: number; message: string } | { status: number; raw: string };
+
 /**
- * A local stand-in for the Anthropic Messages API: it answers every request
- * with a call of the requested tool, taking the input from
- * `offline/fixtures/llm/<script>.json`, or with `fail` (an API error) when set.
+ * A local stand-in for the Anthropic Messages API (`POST /v1/messages`) and the OpenAI Chat
+ * Completions API (`POST /v1/chat/completions`): it answers every request with a call of the
+ * requested tool, taking the input from `offline/fixtures/llm/<script>.json`, or with `fail`.
+ * `onRequest` runs before each answer.
  */
-export async function startFakeModel(script: string, fail?: { status: number; message: string }): Promise<FakeModel> {
+export async function startFakeModel(script: string, fail?: ModelFault, onRequest?: () => void): Promise<FakeModel> {
   const replies = JSON.parse(readFixture(`llm/${script}.json`)) as Record<string, unknown>;
   const fake = { requests: 0 };
   const server: Server = createServer((req, res) => {
@@ -82,15 +86,43 @@ export async function startFakeModel(script: string, fail?: { status: number; me
     req.on("data", (chunk: Buffer) => chunks.push(chunk));
     req.on("end", () => {
       fake.requests++;
-      res.setHeader("content-type", "application/json");
+      onRequest?.();
       if (fail) {
-        res.writeHead(fail.status).end(JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: fail.message } }));
+        if ("raw" in fail) {
+          res.writeHead(fail.status, { "content-type": "text/html" }).end(fail.raw);
+        } else {
+          const body = { type: "error", error: { type: "invalid_request_error", message: fail.message } };
+          res.writeHead(fail.status, { "content-type": "application/json" }).end(JSON.stringify(body));
+        }
         return;
       }
-      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { tools?: Array<{ name: string }>; model?: string };
-      const name = body.tools?.[0]?.name ?? "";
+      res.setHeader("content-type", "application/json");
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
+        tools?: Array<{ name?: string; function?: { name: string } }>;
+        model?: string;
+      };
+      const name = body.tools?.[0]?.function?.name ?? body.tools?.[0]?.name ?? "";
       const scripted = replies[name];
       const input = Array.isArray(scripted) ? scripted[scripted.length - 1] : scripted;
+      if (req.url?.endsWith("/chat/completions")) {
+        res.writeHead(200).end(
+          JSON.stringify({
+            id: `chatcmpl-fake-${fake.requests}`,
+            object: "chat.completion",
+            created: 0,
+            model: body.model ?? "fake",
+            choices: [
+              {
+                index: 0,
+                message: { role: "assistant", content: null, tool_calls: [{ id: `call_fake_${fake.requests}`, type: "function", function: { name, arguments: JSON.stringify(input) } }] },
+                finish_reason: "tool_calls",
+              },
+            ],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          }),
+        );
+        return;
+      }
       res.writeHead(200).end(
         JSON.stringify({
           id: `msg_fake_${fake.requests}`,

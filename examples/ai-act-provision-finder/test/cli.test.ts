@@ -5,6 +5,7 @@
  */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
 import { test } from "node:test";
 import { STACK_TRACE, realRunEnv, runExample, startFakeModel } from "../../../offline/process-harness.ts";
 import { startStubServer, type StubReply } from "../../../offline/stub-server.ts";
@@ -12,6 +13,8 @@ import { assertLocalBaseUrl } from "../../../offline/guard.ts";
 import { REFUSALS } from "../../../offline/test-harness.ts";
 import { describeFailure } from "../../../shared/cli.ts";
 import { McpLegislationSearch } from "../src/retrieve-mcp.ts";
+
+const MCP_ENTRY = createRequire(import.meta.url).resolve("@lexapi/mcp");
 
 const ENTRY = "examples/ai-act-provision-finder/src/main.ts";
 const DESCRIPTION = "A SaaS tool that ranks job applicants' CVs and chats with candidates";
@@ -68,7 +71,7 @@ test("a model-provider error is one line, after the credits of the searches made
   const run = await runWithFault(undefined, 1, [], { status: 401, message: "invalid x-api-key" });
   assert.equal(run.code, 1);
   assert.equal(run.stdout, "");
-  assert.equal(run.stderr.trim(), "Model error: invalid x-api-key");
+  assert.equal(run.stderr.trim(), "Model error: invalid x-api-key. Check ANTHROPIC_API_KEY.");
   assert.equal(run.requests, 0);
 });
 
@@ -138,27 +141,124 @@ test("through the MCP server, a refusal after a charged search prints the credit
   assert.match(lines[1]!, /CREDITS_EXHAUSTED/);
 });
 
+/** The MCP server process the command line started: its child running the `@lexapi/mcp` entry point, and nothing else. */
+function mcpChildOf(cliPid: number): number[] {
+  try {
+    const out = execFileSync("pgrep", ["-P", String(cliPid), "-f", MCP_ENTRY], { encoding: "utf8" });
+    return out.trim().split("\n").filter(Boolean).map(Number);
+  } catch {
+    return []; // pgrep exits 1 when nothing matches
+  }
+}
+
+async function waitUntilGone(pids: number[]): Promise<void> {
+  for (let i = 0; i < 100 && pids.some(alive); i++) await new Promise((resolve) => setTimeout(resolve, 20));
+}
+
 test("through the MCP server, a server that dies mid-call is one line, exit 1, and leaves no process behind", async () => {
   let killed: number[] = [];
+  let cliPid = 0;
   const stub = await startStubServer({
     override: () => {
-      // The MCP server process is the only child of the command line: end it while it waits for this answer.
-      killed = execFileSync("pgrep", ["-P", String(cliPid)], { encoding: "utf8" }).trim().split("\n").filter(Boolean).map(Number);
+      // While the MCP server waits for this answer, end it (and only it).
+      killed = mcpChildOf(cliPid);
       for (const pid of killed) process.kill(pid, "SIGKILL");
       return "hang";
     },
   });
   const fake = await startFakeModel("ai-act");
-  let cliPid = 0;
   try {
     const run = await runExample(ENTRY, ["--via", "mcp", DESCRIPTION], realRunEnv(stub.baseUrl, fake), (pid) => (cliPid = pid));
     assert.equal(run.code, 1, run.stderr);
     assert.equal(run.stdout, "");
-    assert.match(run.stderr.trim(), /^MCP server error: .*Connection closed/);
+    assert.equal(run.stderr.trim(), "MCP server error: MCP error -32000: Connection closed");
+    assert.equal(killed.length, 1);
+    assert.equal(alive(killed[0]!), false);
+  } finally {
+    await stub.close();
+    await fake.close();
+  }
+});
+
+test("through the MCP server, a server killed before the first call is one line, exit 1, no stack trace", async () => {
+  let killed: number[] = [];
+  let cliPid = 0;
+  const stub = await startStubServer();
+  // The plan (the first model call) comes after the MCP server started and before any tool call.
+  const fake = await startFakeModel("ai-act", undefined, () => {
+    if (killed.length > 0) return;
+    killed = mcpChildOf(cliPid);
+    for (const pid of killed) process.kill(pid, "SIGKILL");
+    execFileSync(process.execPath, ["-e", "setTimeout(() => {}, 300)"]); // let the transport see it go
+  });
+  try {
+    const run = await runExample(ENTRY, ["--via", "mcp", DESCRIPTION], realRunEnv(stub.baseUrl, fake), (pid) => (cliPid = pid));
+    assert.equal(run.code, 1, run.stderr);
+    assert.equal(run.stdout, "");
+    assert.match(run.stderr.trim(), /^MCP server error: /);
     assert.equal(run.stderr.trim().split("\n").length, 1);
     assert.doesNotMatch(run.stderr, STACK_TRACE);
-    assert.ok(killed.length > 0);
-    assert.ok(killed.every((pid) => !alive(pid)));
+    assert.equal(killed.length, 1);
+    assert.equal(stub.requests.length, 0);
+  } finally {
+    await stub.close();
+    await fake.close();
+  }
+});
+
+test("through the MCP server, a server gone between two calls: the second call is one line", async () => {
+  const stub = await startStubServer();
+  try {
+    const search = await McpLegislationSearch.start({ LEXAPI_API_KEY: "lex_offline_test_key", LEXAPI_BASE_URL: assertLocalBaseUrl(stub.baseUrl) });
+    const pid = search.pid!;
+    assert.ok((await search.search("classification of AI systems")).hits.length > 0);
+    process.kill(pid, "SIGKILL");
+    await waitUntilGone([pid]);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const error = await search.search("risk management").then(() => undefined, (thrown: unknown) => thrown);
+    await search.close().catch(() => {});
+    assert.deepEqual(describeFailure(error)?.exitCode, 1);
+    assert.match(describeFailure(error)?.lines[0] ?? "", /^MCP server error: /);
+  } finally {
+    await stub.close();
+  }
+});
+
+for (const [signal, code] of [["SIGINT", 130], ["SIGTERM", 143]] as const) {
+  test(`${signal} to the command line alone stops the MCP server process too`, async () => {
+    let child: number[] = [];
+    let cliPid = 0;
+    const stub = await startStubServer({
+      override: () => {
+        child = mcpChildOf(cliPid);
+        process.kill(cliPid, signal); // the parent only, not its process group
+        return "hang";
+      },
+    });
+    const fake = await startFakeModel("ai-act");
+    try {
+      const run = await runExample(ENTRY, ["--via", "mcp", DESCRIPTION], realRunEnv(stub.baseUrl, fake), (pid) => (cliPid = pid));
+      assert.equal(run.code, code, run.stderr);
+      assert.equal(run.stderr.trim(), "Interrupted.");
+      assert.equal(child.length, 1);
+      await waitUntilGone(child);
+      assert.equal(alive(child[0]!), false);
+    } finally {
+      await stub.close();
+      await fake.close();
+    }
+  });
+}
+
+test("through the OpenAI client: a real run with LLM_PROVIDER=openai against the local stand-in", async () => {
+  const stub = await startStubServer();
+  const fake = await startFakeModel("ai-act");
+  try {
+    const env = { ...realRunEnv(stub.baseUrl, fake), LLM_PROVIDER: "openai", OPENAI_API_KEY: "sk-fake-offline-test", OPENAI_MODEL: "fake-model", OPENAI_BASE_URL: `${fake.baseUrl}/v1` };
+    const run = await runExample(ENTRY, [DESCRIPTION], env);
+    assert.equal(run.code, 0, run.stderr);
+    assert.match(run.stdout, /Model: openai:fake-model/);
+    assert.ok(fake.requests >= 2); // the plan and the draft
   } finally {
     await stub.close();
     await fake.close();

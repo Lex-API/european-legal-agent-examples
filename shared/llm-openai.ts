@@ -34,7 +34,7 @@ export class OpenAiLlm implements Llm {
       ],
       tool_choice: { type: "function", function: { name: request.tool.name } },
     }).catch((error: unknown) => {
-      throw new LlmError(providerMessage(error)); // the provider refused or could not be reached
+      throw new LlmError(providerMessage(error, "OPENAI_API_KEY")); // the provider refused or could not be reached
     });
 
     const message = completion.choices[0]?.message;

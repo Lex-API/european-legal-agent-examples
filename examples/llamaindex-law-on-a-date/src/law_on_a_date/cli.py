@@ -361,16 +361,28 @@ def _response_json(error: BaseException | None) -> object:
         return None
 
 
-def provider_message(error: BaseException | None) -> str:
+def provider_message(error: BaseException | None, key_variable: str | None = None) -> str:
     """The model provider's own message: the ``error.message`` of its error body where the provider's SDK exposes
-    one (never the body's repr), else the error's text."""
+    one (never the body's repr); otherwise ``HTTP <status>: <the response text>`` for an HTTP error, else the
+    error's text. After a 401 or 403 it names the variable that holds the key (never the key)."""
+    message = None
     for body in (getattr(error, "body", None), _response_json(error)):
         if isinstance(body, dict):
             inner = body.get("error")
-            message = inner.get("message") if isinstance(inner, dict) else body.get("message")
-            if isinstance(message, str) and message.strip():
-                return message
-    return str(error)
+            field = inner.get("message") if isinstance(inner, dict) else body.get("message")
+            if isinstance(field, str) and field.strip():
+                message = field
+                break
+    status = getattr(error, "status_code", None)
+    if message is None and isinstance(status, int):
+        response = getattr(error, "response", None)
+        text = getattr(response, "text", "") if response is not None else ""
+        message = f"HTTP {status}: {text.strip() or 'no message'}"
+    message = str(error) if message is None else message
+    if status in (401, 403) and key_variable:
+        message = message.rstrip(": ")
+        message = f"{message}{'' if message.endswith(('.', '!', '?')) else '.'} Check {key_variable}."
+    return message
 
 
 def model_error_line(message: str) -> str:
@@ -383,7 +395,7 @@ def model_failure(error: AnswerError | ModelCallError) -> str:
     """One line for a failed model call (the provider's message) or an unusable reply."""
     if isinstance(error, AnswerError):
         return one_line(f"The model's reply was not used: {error}")
-    return model_error_line(provider_message(error.__cause__))
+    return model_error_line(provider_message(error.__cause__, "ANTHROPIC_API_KEY"))
 
 
 def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:

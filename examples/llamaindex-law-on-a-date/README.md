@@ -173,7 +173,9 @@ Source: CELEX 32016R0679, art_18, text for 2019-06-01 not established, https://e
 needs that repository to be reachable. If you have access to it, `pip` uses your usual GitHub
 credentials for it.
 
-On an Intel Mac, `pyproject.toml` also pins `cryptography` below 49: `llama-index-llms-anthropic`
+`pyproject.toml` pins `anthropic` to 1.17.0: `llama-index-llms-anthropic` 0.13.0, its latest
+release, fails with `anthropic` 2.x before any request is sent. On an Intel Mac, it also pins
+`cryptography` below 49: `llama-index-llms-anthropic`
 needs it, and from 49.0.0 it ships macOS wheels for Apple silicon only.
 
 ```
@@ -279,7 +281,8 @@ reported"), which copy is kept when the search returns the provision too (for ea
 (and the line saying so when a different version is kept),
 the tool's event read from the adapter's dispatcher and its handler removed after each lookup, no
 model call when no passage has text, the citation check (the LangChain example's
-table, and a test that the two examples' check is the same code), unusable replies and model-provider
+table, and a test that the two examples' check is the same code), the real `Anthropic` LLM class sending its request to a local stand-in for the Anthropic API (and its
+errors), unusable replies and model-provider
 errors, 401/402/403/429/500 (credits, quota, payment past due and rate limit, each with its exact
 line, for the lookup and for the search) and unreadable answers, sanitised output, the API key never printed, the
 model settings, `.env` reading and an unfilled copy of `.env.example`, "today" in UTC whatever the

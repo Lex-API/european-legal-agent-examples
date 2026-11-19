@@ -3,7 +3,7 @@
  * as children against the local stub and a local stand-in for the model API.
  */
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -80,7 +80,7 @@ test("a model-provider error is one line after the credits line, and the state f
   const result = await poll(undefined, 1, state, { status: 401, message: "invalid x-api-key" });
   assert.equal(result.code, 1);
   assert.equal(result.stdout, "");
-  assert.deepEqual(result.stderr.trimEnd().split("\n"), ["LexAPI credits reported for this run: 8.", "Model error: invalid x-api-key"]);
+  assert.deepEqual(result.stderr.trimEnd().split("\n"), ["LexAPI credits reported for this run: 8.", "Model error: invalid x-api-key. Check ANTHROPIC_API_KEY."]);
   assert.equal(existsSync(state), false);
 });
 
@@ -162,16 +162,66 @@ test("webhook setup: missing settings exit 2 with no request", async () => {
 const notSaved = (path: string, code: string) =>
   `The state file ${path} could not be written (${code}). The digest above was produced, but the state was not saved, so the next run will report the same items again.`;
 
-test("a state file that cannot be written: the digest is printed first, then one line saying so, exit 1", async () => {
-  // Its directory is a regular file, so no user (root included) can write it.
+test("a state path whose directory is a regular file: one line, exit 2, no request", async () => {
   const parent = join(dir, `not-a-directory-${++n}`);
   writeFileSync(parent, "");
   const state = join(parent, "state.json");
   const result = await poll(undefined, 1, state);
-  assert.equal(result.code, 1);
-  assert.match(result.stdout, /# Regulatory change digest/);
-  assert.deepEqual(result.stderr.trimEnd().split("\n"), ["LexAPI credits reported for this run: 8.", notSaved(state, "ENOTDIR")]);
-  assert.doesNotMatch(result.stderr, STACK_TRACE);
+  assert.equal(result.code, 2);
+  assert.equal(result.stdout, "");
+  assert.equal(result.stderr.trim(), `The state file ${state} cannot be written: ${parent} is not a directory.`);
+  assert.deepEqual(result.requests, []);
+});
+
+test("a state file in a directory that cannot be searched: one line, exit 2, no request", { skip: process.getuid?.() === 0 && "root can search any directory" }, async () => {
+  const closed = mkdtempSync(join(dir, "closed-"));
+  const state = join(closed, "state.json");
+  chmodSync(closed, 0o000);
+  try {
+    const result = await poll(undefined, 1, state);
+    assert.equal(result.code, 2);
+    assert.equal(result.stdout, "");
+    assert.equal(result.stderr.trim(), `The state file ${state} cannot be checked (EACCES).`);
+    assert.deepEqual(result.requests, []);
+  } finally {
+    chmodSync(closed, 0o755);
+  }
+});
+
+test("a symlinked state path stays a link: the target is written", async () => {
+  const target = statePath();
+  assert.equal((await poll(undefined, 1, target)).code, 0);
+  const link = join(dir, `link-${++n}.json`);
+  symlinkSync(target, link);
+  const result = await poll(undefined, 1, link);
+  assert.equal(result.code, 0, result.stderr);
+  assert.ok(lstatSync(link).isSymbolicLink());
+  assert.equal(readlinkSync(link), target);
+  assert.ok(JSON.parse(readFileSync(target, "utf8")).baselined.length > 0);
+});
+
+test("a new state file is readable by its owner only; an existing file keeps its mode", async () => {
+  const fresh = statePath();
+  assert.equal((await poll(undefined, 1, fresh)).code, 0);
+  assert.equal(statSync(fresh).mode & 0o777, 0o600);
+  chmodSync(fresh, 0o640);
+  assert.equal((await poll(undefined, 1, fresh)).code, 0);
+  assert.equal(statSync(fresh).mode & 0o777, 0o640);
+});
+
+test("the state is written by a rename (never in place), and a killed run's temporary files are removed", async () => {
+  const state = statePath();
+  assert.equal((await poll(undefined, 1, state)).code, 0);
+  const before = statSync(state).ino;
+  const name = state.split("/").pop()!;
+  const leftover = join(dir, `.${name}.99999.tmp`);
+  const unrelated = [join(dir, `.${name}.tmp`), join(dir, `.other-${name}.99999.tmp`), join(dir, `x.${name}.99999.tmp`)];
+  for (const path of [leftover, ...unrelated]) writeFileSync(path, "{ partial");
+  assert.equal((await poll(undefined, 1, state)).code, 0);
+  assert.notEqual(statSync(state).ino, before); // a new file took its place: the old one was never rewritten
+  assert.equal(existsSync(leftover), false);
+  for (const path of unrelated) assert.ok(existsSync(path), path);
+  assert.deepEqual(readdirSync(dir).filter((file) => file.startsWith(`.${name}.`) && file.endsWith(".tmp") && /\.\d+\.tmp$/.test(file)), []);
 });
 
 test("a read-only state directory: the digest is printed, the state is not saved, exit 1", { skip: process.getuid?.() === 0 && "root can write to a read-only directory" }, async () => {
@@ -204,6 +254,10 @@ for (const [name, content] of Object.entries({
   "a celex that is not text": '{"acts": [{"celex": 5}]}',
   "a topic without a query or type": '{"topics": [{"name": "AI"}]}',
   "not an object": "[]",
+  "days too large": '{"acts": [{"celex": "32016R0679"}], "days": 1e308}',
+  "days 0": '{"acts": [{"celex": "32016R0679"}], "days": 0}',
+  "days 366": '{"acts": [{"celex": "32016R0679"}], "days": 366}',
+  "days not whole": '{"acts": [{"celex": "32016R0679"}], "days": 1.5}',
 })) {
   test(`a watch list with ${name}: one line naming the file and what is expected, exit 2, no request`, async () => {
     const path = join(dir, `watchlist-${++n}.json`);
@@ -238,7 +292,7 @@ test("webhook setup: a create answer without an id prints what came back and say
   const noId = { status: 201, body: { success: true, webhook: { name: "Regulatory change monitor", secret: "fixture-secret-not-a-real-secret" } } };
   const result = await run(SETUP, noId, 1, [], HOOK_URL);
   assert.equal(result.code, 1);
-  assert.match(result.stdout, /^The answer to the create, as returned:\n\{/);
+  assert.match(result.stdout, /^The answer to the create \(its body and the SDK's response metadata, API keys masked\):\n\{/);
   assert.match(result.stdout, /"secret": "fixture-secret-not-a-real-secret"/);
   assert.equal(
     result.stderr.trim(),
@@ -246,3 +300,30 @@ test("webhook setup: a create answer without an id prints what came back and say
   );
   assert.deepEqual(result.requests, ["POST /webhooks"]);
 });
+
+
+test("a CELEX number listed twice is polled once, with one note", async () => {
+  const path = join(dir, `watchlist-${++n}.json`);
+  writeFileSync(path, JSON.stringify({ acts: [{ celex: "32016R0679" }, { celex: " 32016r0679 ", label: "again" }], topics: [], days: 365 }));
+  const result = await run(MONITOR, undefined, 1, ["--watchlist", path, "--state", statePath()]);
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(result.requests, ["GET /citations/cited-by/32016R0679"]);
+  assert.deepEqual(result.stderr.trimEnd().split("\n"), [
+    `The watch list ${path} names CELEX 32016R0679 more than once; it is polled once.`,
+    "LexAPI credits reported for this run: 1.",
+  ]);
+});
+
+for (const [name, body, printed] of [
+  ["success false with status SUCCESS", { success: false, delivery: { status: "SUCCESS", responseStatus: 200 } }, "Test delivery: not confirmed (success: false, status: SUCCESS, HTTP 200)"],
+  ["success missing", { delivery: { status: "SUCCESS", responseStatus: 200 } }, "Test delivery: not confirmed (success: missing, status: SUCCESS, HTTP 200)"],
+] as const) {
+  test(`webhook setup: a test answer with ${name} is not shown as a success`, async () => {
+    const result = await run(SETUP, { status: 200, body }, 2, [], HOOK_URL);
+    assert.equal(result.code, 1);
+    const lines = result.stderr.trimEnd().split("\n");
+    assert.match(lines[0]!, /^The webhook wh_fixture_0001 was created, but its test delivery failed\./);
+    assert.equal(lines[1], printed);
+    assert.doesNotMatch(result.stdout, /Test delivery/);
+  });
+}

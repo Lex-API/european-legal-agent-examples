@@ -42,6 +42,7 @@ await runCli(
     if (!values["dry-run"]) requireSettings(process.env, { lexapi: true, model: true });
     const ownList = join(here, "watchlist.json");
     const watchlist = loadWatchlist(values.watchlist ?? (existsSync(ownList) ? ownList : join(here, "watchlist.example.json")));
+    for (const note of watchlist.notes ?? []) console.error(note);
     // A dry run starts with every watched act already baselined, so the fixtures' relations show up.
     const state = values["dry-run"] ? { ...emptyState(), baselined: watchlist.acts.map((a) => a.celex) } : loadState(values.state);
 

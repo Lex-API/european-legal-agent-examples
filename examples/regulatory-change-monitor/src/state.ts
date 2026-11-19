@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { chmodSync, lstatSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 import { ConfigError } from "../../../shared/cli.ts";
 
 /** What the monitor remembers between runs, so each change is reported once. */
@@ -29,15 +29,62 @@ export function emptyState(): MonitorState {
   return { seen: {}, baselined: [], deliveries: [] };
 }
 
+function errorCode(error: unknown): string {
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : "error";
+}
+
+/** The file the state is written to: a symlink's target (so the link stays a link), else the path itself. */
+export function stateTarget(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    try {
+      // A link whose target does not exist yet: write that target.
+      if (lstatSync(path).isSymbolicLink()) return resolve(dirname(path), readlinkSync(path));
+    } catch {
+      // not there: checked by loadState
+    }
+    return path;
+  }
+}
+
+/** This monitor's temporary file for a state file: `.<name>.<pid>.tmp` next to it. */
+const TEMPORARY = (target: string) => new RegExp(`^\\.${basename(target).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.\\d+\\.tmp$`);
+
+/**
+ * Read the state file before any request. A path that does not exist gives an empty state; one
+ * that cannot be checked (a directory that cannot be searched), is a directory, cannot be read
+ * or is not the JSON this monitor writes is a configuration error. Leftover temporary files of a
+ * killed run for this state file are removed.
+ */
 export function loadState(path: string): MonitorState {
-  if (!existsSync(path)) return emptyState();
-  if (statSync(path).isDirectory()) throw new ConfigError(`The state file ${path} is a directory; give --state a file path.`);
+  const target = stateTarget(path);
+  let exists = true;
+  try {
+    if (statSync(target).isDirectory()) throw new ConfigError(`The state file ${path} is a directory; give --state a file path.`);
+  } catch (error) {
+    if (error instanceof ConfigError) throw error;
+    // ENOTDIR: a part of the path is a file; the directory check below says which.
+    if (errorCode(error) !== "ENOENT" && errorCode(error) !== "ENOTDIR") {
+      throw new ConfigError(`The state file ${path} cannot be checked (${errorCode(error)}).`);
+    }
+    exists = false;
+  }
+  try {
+    const folder = statSync(dirname(target));
+    if (!folder.isDirectory()) throw new ConfigError(`The state file ${path} cannot be written: ${dirname(target)} is not a directory.`);
+  } catch (error) {
+    if (error instanceof ConfigError) throw error;
+    throw new ConfigError(`The state file ${path} cannot be checked: its directory ${dirname(target)} ${errorCode(error) === "ENOENT" ? "does not exist" : `cannot be read (${errorCode(error)})`}.`);
+  }
+  removeStaleTemporaries(target);
+  if (!exists) return emptyState();
   let text: string;
   try {
-    text = readFileSync(path, "utf8");
+    text = readFileSync(target, "utf8");
   } catch (error) {
-    const code = (error as { code?: unknown }).code;
-    throw new ConfigError(`The state file ${path} could not be read (${typeof code === "string" ? code : "read error"}).`);
+    throw new ConfigError(`The state file ${path} could not be read (${errorCode(error)}).`);
   }
   const unreadable = new ConfigError(`The state file ${path} is not the JSON this monitor writes. Fix it, or remove it to start again from a baseline.`);
   let raw: unknown;
@@ -55,15 +102,43 @@ export function loadState(path: string): MonitorState {
   return state;
 }
 
+/** Remove this monitor's leftover temporary files for this state file (a killed run's); nothing else. */
+function removeStaleTemporaries(target: string): void {
+  const pattern = TEMPORARY(target);
+  let names: string[];
+  try {
+    names = readdirSync(dirname(target));
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    if (pattern.test(name) && name !== basename(temporaryFor(target))) rmSync(join(dirname(target), name), { force: true });
+  }
+}
+
+function temporaryFor(target: string): string {
+  return join(dirname(target), `.${basename(target)}.${process.pid}.tmp`);
+}
+
 /**
- * Write the state file atomically: a temporary file in the same directory, then a rename,
- * so the file is never half-written. The monitor is meant to run one at a time.
+ * Write the state file atomically: a temporary file next to the target, then a rename, so the
+ * file is never half-written. A symlinked path keeps its link (the target is written). An
+ * existing file keeps its mode; a new one is created readable by its owner only (0600), since
+ * the state shows what is being watched. The monitor is meant to run one at a time.
  */
 export function saveState(path: string, state: MonitorState): void {
-  const temporary = join(dirname(path), `.${basename(path)}.${process.pid}.tmp`);
+  const target = stateTarget(path);
+  const temporary = temporaryFor(target);
+  let mode = 0o600;
   try {
-    writeFileSync(temporary, JSON.stringify(state, null, 2) + "\n");
-    renameSync(temporary, path);
+    mode = statSync(target).mode & 0o777;
+  } catch {
+    // a new file
+  }
+  try {
+    writeFileSync(temporary, JSON.stringify(state, null, 2) + "\n", { mode });
+    chmodSync(temporary, mode); // the umask may have narrowed it
+    renameSync(temporary, target);
   } catch (error) {
     rmSync(temporary, { force: true });
     throw error;
@@ -72,9 +147,8 @@ export function saveState(path: string, state: MonitorState): void {
 
 /** The line for a state file that could not be written; the digest was printed before it. */
 export function stateNotSaved(path: string, error: unknown): string {
-  const code = (error as { code?: unknown }).code;
   return (
-    `The state file ${path} could not be written (${typeof code === "string" ? code : "write error"}). ` +
+    `The state file ${path} could not be written (${errorCode(error)}). ` +
     "The digest above was produced, but the state was not saved, so the next run will report the same items again."
   );
 }

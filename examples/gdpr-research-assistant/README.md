@@ -133,7 +133,8 @@ Nothing is printed on stdout; stderr gets one line per problem:
   `LexAPI error INVALID_RESPONSE (HTTP 200): The answer could not be read.` When earlier calls of
   the run were charged, their credits line comes first.
 - **The model provider failed**: `Model error: <the provider's message>`, capped at 1,000
-  characters.
+  characters; `Model error: HTTP <status>: <the response text>` when the answer carries no
+  message; after a rejected key (401 or 403) it names the variable to check, never the key.
 - **A key or setting is missing or invalid**: one line naming it, before any request. `LLM_PROVIDER`
   is trimmed and its case ignored; empty means `anthropic`; any value but `anthropic` or `openai` is
   a configuration error.
@@ -169,7 +170,8 @@ usage is billed separately by your model provider.
 quoted section, every path by which model text reaches the output, ten well-behaved drafts, the
 sources-only fallback, "not reported" credits, paragraph selection, the grounding rules (from
 `shared/grounding-vectors.json`, which the TypeScript suite runs too), the model adapters
-against fake provider clients, and `tests/test_errors.py`: the lines and exit code for each refusal
+against fake provider clients and, in `tests/test_real_providers.py`, the real Anthropic and OpenAI
+clients sending their requests to local stand-ins for both APIs, and `tests/test_errors.py`: the lines and exit code for each refusal
 (credits exhausted, an exhausted quota, payment past due, a rate limit, a key error, a server error,
 a timeout, an unreadable answer), a refusal after a charged call, a model-provider error, missing
 keys and an unknown `LLM_PROVIDER` (exit 2, no request) and Ctrl-C, in process and with the command line run as a process

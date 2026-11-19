@@ -21,6 +21,7 @@ from typing import Any
 import httpx
 import langsmith
 import pytest
+from fake_providers import FakeProviders
 from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, BaseMessage
@@ -44,6 +45,9 @@ REAL_LOAD_ENV_FILE = cli.load_env_file  # the conftest replaces both for every t
 REAL_TODAY = cli.today
 
 _real_connect = socket.socket.connect
+#: httpx's real transports, for the tests that send a real model client's request to a 127.0.0.1 stand-in
+#: (sockets stay loopback-only for those too).
+REAL_HTTPX = (httpx.HTTPTransport.handle_request, httpx.AsyncHTTPTransport.handle_async_request)
 _real_getaddrinfo = socket.getaddrinfo
 
 
@@ -143,3 +147,16 @@ def fake_model(*replies: AIMessage | str) -> RecordingChatModel:
 @pytest.fixture
 def stub() -> Stub:
     return Stub()
+
+
+@pytest.fixture
+def providers(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeProviders]:
+    """A local stand-in for the model provider's API; the real client classes talk to it over 127.0.0.1."""
+    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", REAL_HTTPX[0])
+    monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", REAL_HTTPX[1])
+    fake = FakeProviders().start()
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-fake-offline-test-not-a-key")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", fake.base_url)
+    monkeypatch.setenv("ANTHROPIC_API_URL", fake.base_url)
+    yield fake
+    fake.close()

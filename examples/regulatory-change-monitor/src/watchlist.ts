@@ -19,12 +19,20 @@ export interface Topic {
 export interface Watchlist {
   acts: WatchedAct[];
   topics: Topic[];
-  /** Look-back window for topics, in days. */
+  /** Look-back window for topics, in days (1 to MAX_DAYS). */
   days: number;
+  /** Notes about the list (a CELEX number listed twice, polled once). */
+  notes?: string[];
 }
 
+/**
+ * The longest look-back window accepted. The API reference gives `days` a minimum of 1 and no
+ * maximum; this example caps it at a year.
+ */
+export const MAX_DAYS = 365;
+
 const SHAPE =
-  'expected {"acts": [{"celex": "<CELEX number>", "label": "<text>"}], "topics": [{"name": "<text>", "query": "<keywords>", "documentType": "<type>"}], "days": <whole number>}';
+  `expected {"acts": [{"celex": "<CELEX number>", "label": "<text>"}], "topics": [{"name": "<text>", "query": "<keywords>", "documentType": "<type>"}], "days": <whole number from 1 to ${MAX_DAYS}>}`;
 
 export function loadWatchlist(path: string): Watchlist {
   const invalid = (what: string) => new ConfigError(`The watch list ${path} is not valid: ${what}; ${SHAPE}.`);
@@ -56,11 +64,20 @@ export function loadWatchlist(path: string): Watchlist {
       throw invalid('every topic needs a "name" and a "query" and/or a "documentType", as text');
     }
   }
-  if (list.days !== undefined && !(Number.isInteger(list.days) && (list.days as number) > 0)) throw invalid('"days" is not a whole number above 0');
+  if (list.days !== undefined && !(Number.isInteger(list.days) && (list.days as number) >= 1 && (list.days as number) <= MAX_DAYS)) {
+    throw invalid(`"days" is not a whole number from 1 to ${MAX_DAYS}`);
+  }
   if (acts.length === 0 && topics.length === 0) throw new ConfigError(`${path} lists no acts and no topics.`);
-  return {
-    acts: (acts as Array<{ celex: string; label?: string }>).map((a) => ({ celex: a.celex, label: a.label ?? a.celex })),
-    topics: topics as Topic[],
-    days: (list.days as number | undefined) ?? 7,
-  };
+  // One request per act: a CELEX number listed twice (in any case or spacing) is polled once.
+  const seen = new Map<string, WatchedAct>();
+  const notes: string[] = [];
+  for (const act of acts as Array<{ celex: string; label?: string }>) {
+    const celex = act.celex.trim().toUpperCase();
+    if (seen.has(celex)) {
+      if (!notes.some((note) => note.includes(` ${celex} `))) notes.push(`The watch list ${path} names CELEX ${celex} more than once; it is polled once.`);
+      continue;
+    }
+    seen.set(celex, { celex, label: act.label?.trim() || celex });
+  }
+  return { acts: [...seen.values()], topics: topics as Topic[], days: (list.days as number | undefined) ?? 7, notes };
 }

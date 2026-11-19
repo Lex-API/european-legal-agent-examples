@@ -655,6 +655,8 @@ def test_a_model_provider_error_exits_1_without_a_traceback(
     lines = err.strip().splitlines()
     assert lines[0].startswith("LexAPI credits used for this run: 9 ")
     expected = "Connection error." if kind == "connection" else f"placeholder {kind}"
+    if kind == "auth":
+        expected += ". Check ANTHROPIC_API_KEY."  # the variable that holds the key, never the key
     assert lines[1:] == [f"Model error: {expected}"]  # the provider's message, not the error's repr
     assert "Traceback" not in err and "\x1b" not in err and TEST_KEY not in err
 
