@@ -37,6 +37,19 @@ export class LlmError extends Error {
   }
 }
 
+/**
+ * The provider's own message for a failed model call: the `error.message` of
+ * an API error body when there is one, else the error's message. The caller
+ * cleans, caps and masks it.
+ */
+export function providerMessage(error: unknown): string {
+  const body = (error as { error?: unknown }).error;
+  const inner = body && typeof body === "object" ? (body as { error?: { message?: unknown }; message?: unknown }) : undefined;
+  const message = inner?.error?.message ?? inner?.message;
+  if (typeof message === "string" && message.trim()) return message;
+  return error instanceof Error ? error.message : String(error);
+}
+
 type ScriptedReply = unknown | ((request: LlmRequest) => unknown);
 
 /**

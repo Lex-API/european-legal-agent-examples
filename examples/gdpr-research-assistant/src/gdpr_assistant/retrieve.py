@@ -14,6 +14,7 @@ Per question (see the README for the credit arithmetic):
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from lexapi import APIResponse, LexAPI
@@ -45,8 +46,11 @@ class Retrieved:
     credits_reported: int = 0
     #: Calls whose response carried no credits figure (never counted as 0).
     credits_unreported: int = 0
+    #: Calls counted so far, with or without a credits figure.
+    calls: int = 0
 
     def add_credits(self, charged: int | None) -> None:
+        self.calls += 1
         if charged is None:
             self.credits_unreported += 1
         else:
@@ -162,8 +166,13 @@ def select_paragraphs(document: Document, question: str, hint: int | None) -> li
 
 
 def case_sources(
-    client: LexAPI, cases: list[SemanticCaseLawResult], question: str, first_id: int
+    client: LexAPI,
+    cases: list[SemanticCaseLawResult],
+    question: str,
+    first_id: int,
+    on_credits: Callable[[int | None], None] | None = None,
 ) -> tuple[list[Source], list[str], list[int | None]]:
+    """Paragraphs of the judgments found. ``on_credits`` is told each read's credits as soon as it returns."""
     sources: list[Source] = []
     notices: list[str] = []
     credits: list[int | None] = []
@@ -172,6 +181,8 @@ def case_sources(
             continue
         response = client.get_document(case.celex, include=["metadata", "paragraphs"])
         credits.append(reported_credits(response))
+        if on_credits:
+            on_credits(credits[-1])
         document = response.document
         name = case.ecli or document.ecli or case.celex
         availability = document.text_availability
@@ -200,8 +211,9 @@ def case_sources(
     return sources, notices, credits
 
 
-def retrieve(client: LexAPI, question: str, as_of: str | None = None) -> Retrieved:
-    result = Retrieved()
+def retrieve(client: LexAPI, question: str, as_of: str | None = None, result: Retrieved | None = None) -> Retrieved:
+    """Search, then read the judgments found. Pass ``result`` to see the credits counted when a later call fails."""
+    result = Retrieved() if result is None else result
 
     legislation = client.semantic_legislation_search(question, limit=10, include_text=True, as_of=as_of)
     result.add_credits(reported_credits(legislation))
@@ -219,9 +231,9 @@ def retrieve(client: LexAPI, question: str, as_of: str | None = None) -> Retriev
     result.add_credits(reported_credits(case_law))
     if case_law.hint:
         result.notices.append(f"Case-law search: {case_law.hint}")
-    paragraphs, notices, credits = case_sources(client, case_law.results, question, len(result.sources) + 1)
+    paragraphs, notices, _credits = case_sources(
+        client, case_law.results, question, len(result.sources) + 1, result.add_credits
+    )
     result.sources += paragraphs
     result.notices += notices
-    for charged in credits:
-        result.add_credits(charged)
     return result

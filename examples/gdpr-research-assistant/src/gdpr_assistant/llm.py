@@ -59,6 +59,18 @@ class ScriptedLlm:
         return copy.deepcopy(queue.pop(0) if len(queue) > 1 else queue[0])
 
 
+def provider_message(error: Exception) -> str:
+    """The provider's own message for a failed model call: the ``error.message`` of an API error body when
+    there is one, else the error's text. The caller cleans, caps and masks it."""
+    body = getattr(error, "body", None)
+    if isinstance(body, dict):
+        inner = body.get("error")
+        message = inner.get("message") if isinstance(inner, dict) else body.get("message")
+        if isinstance(message, str) and message.strip():
+            return message
+    return str(error)
+
+
 class AnthropicLlm:
     """Anthropic Messages API with tool use.
 
@@ -77,25 +89,31 @@ class AnthropicLlm:
         self._model = model or DEFAULT_ANTHROPIC_MODEL
         self.label = f"anthropic:{self._model}"
 
+    def _create(self, messages: list[dict[str, Any]], request: LlmRequest) -> Any:
+        return self._client.messages.create(
+            model=self._model,
+            max_tokens=16000,
+            system=request.system,
+            tools=[
+                {
+                    "name": request.tool_name,
+                    "description": request.tool_description,
+                    "input_schema": request.schema,
+                    "strict": True,
+                }
+            ],
+            messages=messages,
+        )
+
     def generate(self, request: LlmRequest) -> Any:
         messages: list[dict[str, Any]] = [
             {"role": "user", "content": f"{request.user}\n\nReply by calling the {request.tool_name} tool."}
         ]
         for _attempt in range(2):
-            response = self._client.messages.create(
-                model=self._model,
-                max_tokens=16000,
-                system=request.system,
-                tools=[
-                    {
-                        "name": request.tool_name,
-                        "description": request.tool_description,
-                        "input_schema": request.schema,
-                        "strict": True,
-                    }
-                ],
-                messages=messages,
-            )
+            try:
+                response = self._create(messages, request)
+            except Exception as error:  # the provider refused or could not be reached
+                raise LlmError(provider_message(error)) from error
             if response.stop_reason == "refusal":
                 raise LlmError("The model declined this request (stop_reason: refusal).")
             if response.stop_reason == "max_tokens":
@@ -121,8 +139,8 @@ class OpenAiLlm:
         self._model = model
         self.label = f"openai:{model}"
 
-    def generate(self, request: LlmRequest) -> Any:
-        completion = self._client.chat.completions.create(
+    def _complete(self, request: LlmRequest) -> Any:
+        return self._client.chat.completions.create(
             model=self._model,
             messages=[
                 {"role": "system", "content": request.system},
@@ -141,6 +159,12 @@ class OpenAiLlm:
             ],
             tool_choice={"type": "function", "function": {"name": request.tool_name}},
         )
+
+    def generate(self, request: LlmRequest) -> Any:
+        try:
+            completion = self._complete(request)
+        except Exception as error:  # the provider refused or could not be reached
+            raise LlmError(provider_message(error)) from error
         message = completion.choices[0].message
         if getattr(message, "refusal", None):
             # The refusal text is model-written; it is not echoed into the error.

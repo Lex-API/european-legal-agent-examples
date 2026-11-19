@@ -52,8 +52,8 @@ class RecordedRequest:
     body: str
 
 
-#: An override returns ``(status, body)`` or ``None`` to fall through to ``routes.json``.
-Override = Callable[[RecordedRequest], "tuple[int, Any] | None"]
+#: An override returns ``(status, body)``, ``(status, body, headers)`` or ``None`` to fall through to ``routes.json``.
+Override = Callable[[RecordedRequest], "tuple[int, Any] | tuple[int, Any, dict[str, str]] | None"]
 
 
 @dataclass
@@ -72,18 +72,18 @@ def start_stub_server(override: Override | None = None) -> StubServer:
     routes: list[dict[str, Any]] = json.loads(read_fixture("routes.json"))
     stub = StubServer(base_url="")
 
-    def reply(request: RecordedRequest) -> tuple[int, Any]:
+    def reply(request: RecordedRequest) -> tuple[int, Any, dict[str, str]]:
         if override and (custom := override(request)) is not None:
-            return custom
+            return (custom[0], custom[1], custom[2] if len(custom) > 2 else {})
         haystack = unquote(request.query) if request.method == "GET" else request.body
         for route in routes:
             if route["method"] != request.method or route["path"] != request.path:
                 continue
             if route.get("includes") and route["includes"] not in haystack:
                 continue
-            return route.get("status", 200), read_fixture(route["fixture"])
+            return route.get("status", 200), read_fixture(route["fixture"]), {}
         message = f"The stub has no fixture for {request.method} {request.path}"
-        return 404, {"success": False, "error": {"code": "NOT_FOUND", "message": message}}
+        return 404, {"success": False, "error": {"code": "NOT_FOUND", "message": message}}, {}
 
     class Handler(BaseHTTPRequestHandler):
         def _handle(self) -> None:
@@ -97,16 +97,21 @@ def start_stub_server(override: Override | None = None) -> StubServer:
                 body=self.rfile.read(length).decode("utf-8") if length else "",
             )
             stub.requests.append(request)
-            status, body = reply(request)
+            status, body, extra_headers = reply(request)
             payload = (body if isinstance(body, str) else json.dumps(body)).encode("utf-8")
             self.send_response(status)
-            self.send_header("content-type", "application/json")
-            self.send_header("content-length", str(len(payload)))
-            # The real API sends these on every /api/v1 response; the SDK reads them.
-            self.send_header("x-lexapi-version", "stub")
-            self.send_header("ratelimit-limit", "15")
-            self.send_header("ratelimit-remaining", "14")
-            self.send_header("ratelimit-reset", "60")
+            headers = {
+                "content-type": "application/json",
+                "content-length": str(len(payload)),
+                # The real API sends these on every /api/v1 response; the SDK reads them.
+                "x-lexapi-version": "stub",
+                "ratelimit-limit": "15",
+                "ratelimit-remaining": "14",
+                "ratelimit-reset": "60",
+                **extra_headers,
+            }
+            for name, value in headers.items():
+                self.send_header(name, value)
             self.end_headers()
             self.wfile.write(payload)
 

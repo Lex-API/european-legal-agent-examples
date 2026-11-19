@@ -14,9 +14,9 @@ SHARED = {
     "cli.py": (
         *("DEFAULT_ANTHROPIC_MODEL", "USER_AGENT_SUFFIX", "LOCAL_PREFIX", "DASHBOARD_URL", "KEY_HELP"),
         *("FIRST_DATE", "ACT", "DATE_ASKED", "CREDITS_USED", "NOTICE_MEANING", "CLOSING", "ConfigError"),
-        *("_DATE", "_EXPORT", "PLACEHOLDERS", "_DASHBOARD_CODES", "error_fields"),
+        *("_DATE", "_EXPORT", "PLACEHOLDERS", "_DASHBOARD_CODES", "tidy"),
         *("clean", "today", "date_arg", "not_blank", "answer_heading", "load_env_file", "env_key"),
-        *("require_keys", "create_client", "one_line", "refusal_line", "model_failure"),
+        *("require_keys", "create_client", "one_line", "refusal_lines", "model_failure"),
     ),
     "offline.py": ("DRY_RUN_BASE_URL", "DRY_RUN_BANNER", "FixturesNotFoundError", "read_fixture"),
 }

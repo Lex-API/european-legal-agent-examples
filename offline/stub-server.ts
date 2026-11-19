@@ -37,6 +37,8 @@ export interface RecordedRequest {
 export interface StubReply {
   status: number;
   body: unknown;
+  /** Response headers that replace or add to the defaults below (for example `retry-after`). */
+  headers?: Record<string, string>;
 }
 
 export interface StubServer {
@@ -77,6 +79,7 @@ export async function startStubServer(options: StubOptions = {}): Promise<StubSe
         "ratelimit-limit": "15",
         "ratelimit-remaining": "14",
         "ratelimit-reset": "60",
+        ...reply.headers,
       });
       res.end(typeof reply.body === "string" ? reply.body : JSON.stringify(reply.body));
     });

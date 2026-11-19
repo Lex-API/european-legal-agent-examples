@@ -8,9 +8,7 @@ const MISSING = /^LEXAPI_API_KEY is not set\. Create a key at https:\/\/lex-api\
 test("an empty or blank LEXAPI_API_KEY is missing, before any request", async () => {
   for (const value of [undefined, "", "   "]) {
     assert.throws(() => createLexApiClient({ LEXAPI_API_KEY: value }), { message: MISSING });
-    await assert.rejects(McpLegislationSearch.start({ LEXAPI_API_KEY: value }), {
-      message: "LEXAPI_API_KEY is not set.",
-    });
+    await assert.rejects(McpLegislationSearch.start({ LEXAPI_API_KEY: value }), { message: MISSING });
   }
 });
 

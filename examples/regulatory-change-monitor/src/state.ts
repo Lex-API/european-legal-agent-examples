@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { ConfigError } from "../../../shared/cli.ts";
 
 /** What the monitor remembers between runs, so each change is reported once. */
 export interface MonitorState {
@@ -29,7 +30,20 @@ export function emptyState(): MonitorState {
 
 export function loadState(path: string): MonitorState {
   if (!existsSync(path)) return emptyState();
-  return { ...emptyState(), ...(JSON.parse(readFileSync(path, "utf8")) as Partial<MonitorState>) };
+  const unreadable = new ConfigError(`The state file ${path} could not be read: it is not the JSON this monitor writes. Fix it, or remove it to start again from a baseline.`);
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    throw unreadable;
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw unreadable;
+  const state = { ...emptyState(), ...(raw as Partial<MonitorState>) };
+  const strings = (value: unknown) => Array.isArray(value) && value.every((item) => typeof item === "string");
+  if (!state.seen || typeof state.seen !== "object" || Array.isArray(state.seen) || !strings(state.baselined) || !strings(state.deliveries)) {
+    throw unreadable;
+  }
+  return state;
 }
 
 export function saveState(path: string, state: MonitorState): void {

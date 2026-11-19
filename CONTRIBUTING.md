@@ -21,10 +21,8 @@ npm ci && npm run lint && npm run typecheck && npm test
 (cd examples/llamaindex-law-on-a-date && python3 -m venv .venv && .venv/bin/pip install -e ".[dev]" && .venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy && .venv/bin/pytest -q)
 ```
 
-Each Python example gets its own virtual environment: they depend on different builds of
-`lexapi-client`. The LangChain example needs Python 3.11 or later, and access to the
-`langchain-lexapi` repository until that package is public: until then, installing needs GitHub
-access to that repository (for example `gh auth login`). The LlamaIndex example likewise needs
-Python 3.11 or later, and access to the `lexapi-llamaindex` repository until its packages are
-public. The two examples share one citation check; a test in the LlamaIndex example fails when the
+Each Python example gets its own virtual environment: each pins its own dependencies. The LangChain example needs Python 3.11 or later, and access to the
+`langchain-lexapi` repository until that package is published. The LlamaIndex example likewise
+needs Python 3.11 or later, and access to the `lexapi-llamaindex` repository until its packages are
+published. The two examples share one citation check; a test in the LlamaIndex example fails when the
 copies differ, so change both.

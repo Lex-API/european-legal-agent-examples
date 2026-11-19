@@ -10,7 +10,8 @@ requires-python = ">=3.11"
 license = "MIT"
 dependencies = [
   # Not on PyPI yet: installed from its repository, pinned to a commit.
-  "langchain-lexapi @ git+https://github.com/Lex-API/lexapi-langchain@1680bc3e643d601eee36ba811d3d24c1ab0aa6d3",
+  # TODO(release): replace with "langchain-lexapi>=0.1.0,<0.2" once 0.1.0 is on PyPI.
+  "langchain-lexapi @ git+https://github.com/Lex-API/lexapi-langchain@77b1befd49e361a07a5b522aff3c00fd6d98ebfe",
   "langchain-core==1.8.3",
   "langchain-anthropic==1.7.11",
   "anthropic==2.10.0",

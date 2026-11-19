@@ -12,11 +12,11 @@ answer - with a check in code that every citation points at a source that was ac
 
 | Example | Language | What it shows | LexAPI credits per run |
 | --- | --- | --- | --- |
-| [AI Act provision finder](examples/ai-act-provision-finder) | TypeScript | Describe an AI system; get the AI Act articles that may be relevant, quoted with article-level citations, and what a human must decide. It finds provisions to read, not the obligations that apply. Also runs through the MCP server. | 15 (5 per search) |
+| [AI Act provision finder](examples/ai-act-provision-finder) | TypeScript | Describe an AI system; get the EU AI Act articles that may be relevant, quoted with article-level citations, and what a human must decide. It finds provisions to read, not the obligations that apply. Also runs through the MCP server. | 15 (5 per search) |
 | [GDPR research assistant](examples/gdpr-research-assistant) | Python | Ask a question; get quotations from the GDPR and CJEU judgments with CELEX / ECLI and links, optionally for the text in force on a date. | 12-20 (up to 35 with `--as-of`) |
 | [Regulatory change monitor](examples/regulatory-change-monitor) | TypeScript | Watch acts and topics for new or changed documents; get a cited digest. Polling by default, signed webhooks on paid plans. | 8 for the example watch list |
 | [DORA questions answered from cited passages](examples/langchain-eu-law-rag) | Python (LangChain) | RAG over EU law with LangChain: ask about DORA; the official retriever fetches the articles, each with its Source line (CELEX, article, EUR-Lex link), and the model answers with `[1]`-style citations. Optionally for a date: passages without text for that date arrive as notices. Prints the credits used. | 5 (up to 20 with `--as-of`) |
-| [EU law for a date, from cited passages](examples/llamaindex-law-on-a-date) | Python (LlamaIndex) | EU law for a date with LlamaIndex: name an act and a date; the official LexAPI tools return the version listed for that date and, for a named provision, its text, each with its Source line; passages whose text for that date is not established arrive as notices. A model answers from the passages with `[1]`-style citations. Compare two dates. Prints the credits used. | 6-25 (2 with `--compare`) |
+| [EU law for a date, from cited passages](examples/llamaindex-law-on-a-date) | Python (LlamaIndex) | Point-in-time EU law with LlamaIndex: name an act and a date; the official LexAPI tools return the version listed for that date and, for a named provision, its text, each with its Source line; passages whose text for that date is not established arrive as notices. A model answers from the passages with `[1]`-style citations. Compare two dates. Prints the credits used. | 6-25 (2 with `--compare`) |
 
 Credit figures are computed from the weights in the
 [API reference](https://lex-api.com/docs?ref=github-examples); each example's README shows the
@@ -34,7 +34,10 @@ npm run ai-act -- --dry-run "A SaaS tool that ranks job applicants' CVs and chat
 npm run monitor -- --dry-run
 ```
 
-The Python examples have their own setup; see their READMEs.
+The AI Act provision finder, the regulatory change monitor (above) and the GDPR research assistant
+(its own setup; see its README) work this way for everyone today. The LangChain and LlamaIndex
+examples install LexAPI adapter packages that are not published yet, so until they are, only people
+with access to those repositories can install them, `--dry-run` included.
 
 ## Run one for real
 
@@ -115,7 +118,9 @@ it cites. That is why the quotes are always shown next to it.
 The test suites run offline. They use a local stub server on 127.0.0.1 (in-process mock transport
 for the LangChain and LlamaIndex examples) that replays synthetic fixtures shaped like the API's responses, and a
 scripted stand-in for the model. They refuse to run against any base URL that does not start with
-`http://127.0.0.1:`.
+`http://127.0.0.1:`. The command lines of the TypeScript and GDPR examples are also run as processes,
+against the stub and a local stand-in for the model API, to check what they print and their exit
+codes when a call fails.
 
 That means the code paths, the request shapes the SDKs send, the grounding rules and webhook
 signature verification are tested. The examples have **not** been run against the LexAPI
@@ -144,13 +149,18 @@ today, `npm run record-fixtures -- --i-have-a-key` makes the calls the examples 
 folder is git-ignored: the files contain real legal texts and your account's plan and usage
 figures. The script refuses to run without the flag, inside a test run, or on a CI runner.
 
-Built against `@lexapi/client` 0.4.0 (npm), `lexapi-client` 0.4.0 (PyPI) and `@lexapi/mcp` 0.5.1.
-The LangChain example is built against `langchain-lexapi` 0.1.0 (installed from its repository at
-commit `1680bc3`, which brings its own pinned `lexapi-client`), `langchain-core` 1.8.3 and
-`langchain-anthropic` 1.7.11. The LlamaIndex example is built against `llama-index-retrievers-lexapi`
-and `llama-index-tools-lexapi` 0.1.0 (installed from their repository at commit `a85f7e2`, which
-brings its own pinned `lexapi-client`), `llama-index-core` 0.14.26 and `llama-index-llms-anthropic`
-0.13.0.
+## Versions
+
+- AI Act provision finder: `@lexapi/client` 0.4.0 and `@lexapi/mcp` 0.5.1 (npm).
+- Regulatory change monitor: `@lexapi/client` 0.4.0 (npm).
+- GDPR research assistant: `lexapi-client` from its repository at commit `e48dfda`, until 0.5.0 is
+  on PyPI. That commit still reports its version as 0.4.0.
+- DORA questions (LangChain): `langchain-lexapi` 0.1.0 from its repository at commit `77b1bef` (not
+  published yet; it brings `lexapi-client` at the same commit `e48dfda`), `langchain-core` 1.8.3 and
+  `langchain-anthropic` 1.7.11.
+- EU law for a date (LlamaIndex): `llama-index-retrievers-lexapi` and `llama-index-tools-lexapi`
+  0.1.0 from their repository at commit `8e0bbb9` (not published yet; they bring `lexapi-client` at
+  the same commit `e48dfda`), `llama-index-core` 0.14.26 and `llama-index-llms-anthropic` 0.13.0.
 
 ## Security
 

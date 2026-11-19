@@ -34,6 +34,8 @@ export interface FinderOptions {
   maxQueries?: number;
   /** Articles handed to the model. Default 8. */
   maxSources?: number;
+  /** Counts the credits of each search; pass one to read them when a later step fails. */
+  tally?: CreditTally;
 }
 
 export interface FinderResult {
@@ -108,7 +110,7 @@ export async function findProvisions(
 
   // 2. Retrieve -----------------------------------------------------------
   const hits: LegislationHit[] = [];
-  const tally = new CreditTally();
+  const tally = options.tally ?? new CreditTally();
   for (const query of queries) {
     const outcome = await deps.search.search(query);
     hits.push(...outcome.hits);

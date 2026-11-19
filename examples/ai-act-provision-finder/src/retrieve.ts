@@ -7,6 +7,7 @@
  */
 import type { LexAPI, SemanticLegislationResult } from "@lexapi/client";
 import { creditsCharged } from "../../../shared/env.ts";
+import { UnreadableAnswerError } from "../../../shared/lexapi-error.ts";
 import { eurLexUrl, type Source } from "../../../shared/grounding.ts";
 
 /** Regulation (EU) 2024/1689 - the Artificial Intelligence Act. */
@@ -40,10 +41,17 @@ export class SdkLegislationSearch implements LegislationSearch {
 
   async search(query: string): Promise<SearchOutcome> {
     const response = await this.client.semanticLegislationSearch({ query, limit: 10, includeText: true });
+    // The SDK returns a 2xx body as it came; an answer without its list of hits is not "no hits".
+    if (!isHitList(response?.results)) throw new UnreadableAnswerError(200);
     return { hits: response.results, credits: creditsCharged(response) };
   }
 
   async close(): Promise<void> {}
+}
+
+/** A list of hit objects, as the example reads them. */
+export function isHitList(value: unknown): value is LegislationHit[] {
+  return Array.isArray(value) && value.every((hit) => hit !== null && typeof hit === "object" && !Array.isArray(hit));
 }
 
 /** The act a hit belongs to: a consolidated hit names its base act in `baseCelex`. */

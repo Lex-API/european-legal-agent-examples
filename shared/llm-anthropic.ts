@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { LlmError, type Llm, type LlmRequest } from "./llm.ts";
+import { LlmError, providerMessage, type Llm, type LlmRequest } from "./llm.ts";
 
 export const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5-5";
 
@@ -28,20 +28,24 @@ export class AnthropicLlm implements Llm {
     ];
 
     for (let attempt = 0; attempt < 2; attempt++) {
-      const response = await this.client.messages.create({
-        model: this.model,
-        max_tokens: 16000,
-        system: request.system,
-        tools: [
-          {
-            name: request.tool.name,
-            description: request.tool.description,
-            input_schema: request.tool.schema as Anthropic.Tool.InputSchema,
-            strict: true,
-          },
-        ],
-        messages,
-      });
+      const response = await this.client.messages
+        .create({
+          model: this.model,
+          max_tokens: 16000,
+          system: request.system,
+          tools: [
+            {
+              name: request.tool.name,
+              description: request.tool.description,
+              input_schema: request.tool.schema as Anthropic.Tool.InputSchema,
+              strict: true,
+            },
+          ],
+          messages,
+      })
+        .catch((error: unknown) => {
+          throw new LlmError(providerMessage(error)); // the provider refused or could not be reached
+        });
 
       if (response.stop_reason === "refusal") {
         throw new LlmError("The model declined this request (stop_reason: refusal).");

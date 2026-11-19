@@ -28,7 +28,7 @@ from gdpr_assistant.grounding import (
     validate_draft,
 )
 from gdpr_assistant.llm import Llm, LlmRequest
-from gdpr_assistant.retrieve import retrieve
+from gdpr_assistant.retrieve import Retrieved, retrieve
 from gdpr_assistant.text import plain_text
 
 SYSTEM = """You answer research questions about the General Data Protection Regulation \
@@ -64,9 +64,12 @@ def _notices(notices: list[str]) -> str:
     return "## Notices\n\n" + "\n".join(f"- {plain_text(n)}" for n in notices) + "\n\n" if notices else ""
 
 
-def answer_question(question: str, *, client: LexAPI, llm: Llm, as_of: str | None = None) -> Result:
+def answer_question(
+    question: str, *, client: LexAPI, llm: Llm, as_of: str | None = None, progress: Retrieved | None = None
+) -> Result:
+    """``progress`` (optional) collects the credits of the calls made, also when a later step fails."""
     # 1. Retrieve ------------------------------------------------------------
-    found = retrieve(client, question, as_of)
+    found = retrieve(client, question, as_of, progress)
     sources = found.sources
     scope = f" (as of {plain_text(as_of)})" if as_of else ""
     asked = f"**Question{scope}:** {plain_text(question)}"

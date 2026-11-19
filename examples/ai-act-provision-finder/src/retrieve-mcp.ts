@@ -14,12 +14,22 @@ import { createRequire } from "node:module";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { assertLocalBaseUrl } from "../../../offline/guard.ts";
-import type { LegislationHit, LegislationSearch, SearchOutcome } from "./retrieve.ts";
+import { ConfigError, LEXAPI_KEY_MISSING, envKey } from "../../../shared/cli.ts";
+import { PrintedError, UnreadableAnswerError, clean, maskSecrets } from "../../../shared/lexapi-error.ts";
+import { isHitList, type LegislationHit, type LegislationSearch, type SearchOutcome } from "./retrieve.ts";
 
 /** The largest text budget the tool accepts. */
 const MAX_CHARS = 200_000;
 /** What `@lexapi/mcp` 0.5.1 appends to a hit text it cut. */
 const TRUNCATION_MARKER = / \u2026\[truncated: (\d+) more characters\]$/;
+
+/** The MCP tool reported an error: its own text is printed, on one line (the key masked; tool names are kept). */
+export class McpToolError extends PrintedError {
+  constructor(text: string) {
+    super(maskSecrets(clean(text, 2000) ?? "The MCP tool reported an error without a message."));
+    this.name = "McpToolError";
+  }
+}
 
 export function stripTruncation(hit: LegislationHit): LegislationHit {
   const match = typeof hit.text === "string" ? TRUNCATION_MARKER.exec(hit.text) : null;
@@ -32,8 +42,8 @@ export class McpLegislationSearch implements LegislationSearch {
   private constructor(private readonly client: Client) {}
 
   static async start(env: NodeJS.ProcessEnv = process.env): Promise<McpLegislationSearch> {
-    const apiKey = env.LEXAPI_API_KEY?.trim();
-    if (!apiKey) throw new Error("LEXAPI_API_KEY is not set.");
+    const apiKey = envKey(env, "LEXAPI_API_KEY");
+    if (!apiKey) throw new ConfigError(LEXAPI_KEY_MISSING);
     // The child process is outside the test harness's fetch guard, so under `node --test`
     // refuse to start it unless it will talk to the local stub.
     if (process.env.NODE_TEST_CONTEXT) assertLocalBaseUrl(env.LEXAPI_BASE_URL);
@@ -41,6 +51,8 @@ export class McpLegislationSearch implements LegislationSearch {
     const transport = new StdioClientTransport({
       command: process.execPath,
       args: [serverEntry],
+      // The server's own log lines (its start banner) would mix with this program's output.
+      stderr: "ignore",
       env: {
         LEXAPI_API_KEY: apiKey,
         // Only the read-only tools are needed here.
@@ -60,10 +72,18 @@ export class McpLegislationSearch implements LegislationSearch {
     });
     const blocks = Array.isArray(result.content) ? (result.content as Array<{ type: string; text?: string }>) : [];
     const text = blocks.find((block) => block.type === "text")?.text ?? "";
-    if (result.isError) throw new Error(`lex_semantic_legislation failed: ${text}`);
-    const parsed = JSON.parse(text) as { results?: LegislationHit[] };
+    if (result.isError) throw new McpToolError(text);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = undefined;
+    }
+    const hits = parsed && typeof parsed === "object" ? (parsed as { results?: unknown }).results : undefined;
+    // An answer without its list of hits is not "no hits".
+    if (!isHitList(hits)) throw new UnreadableAnswerError();
     // The tool result does not include the credits charged for the call.
-    return { hits: (parsed.results ?? []).map(stripTruncation), credits: undefined };
+    return { hits: hits.map(stripTruncation), credits: undefined };
   }
 
   async close(): Promise<void> {

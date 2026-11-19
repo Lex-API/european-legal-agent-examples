@@ -6,6 +6,8 @@ says what a human has to decide.
 
 It finds provisions to read. It does not find the obligations that apply.
 
+Node.js 20.12 or later. The model is Anthropic's (default) or OpenAI's, through their SDKs.
+
 ## What it does not do
 
 - It does not classify the system (prohibited, high-risk, ...) and does not say which obligations
@@ -102,6 +104,30 @@ npm run ai-act -- "A SaaS tool that ranks job applicants' CVs and chats with can
 
 Options: `--max-queries N` (1-3, default 3), `--via mcp` (below).
 
+### When a run fails
+
+Nothing is printed on stdout; stderr gets one line per problem:
+
+- **LexAPI refused a request** (for example 401, a key it does not accept; 402, credits exhausted;
+  403, payment past due; 429, a rate limit or an exhausted quota): the line the LexAPI adapters
+  for LangChain and LlamaIndex print, `LexAPI error <code> (HTTP <status>): <message>.`, followed,
+  when the error carries them, by when the credits or the quota reset, when access ended and the
+  billing link (payment past due), and the wait (a rate limit). After a key or credits error the
+  dashboard link follows on a line of its own. An answer the example cannot read gives
+  `LexAPI error INVALID_RESPONSE (HTTP 200): The answer could not be read.` When earlier calls of
+  the run were charged, their credits line comes first.
+- **The model provider failed**: `Model error: <the provider's message>`.
+- **A key or setting is missing**: one line naming it, before any request.
+
+The SDK retries rate limits and gateway or connection errors by itself (up to 3 retries, each wait
+capped at 30 s) and waits up to 95 s for each answer, so a refused or hanging call can take a
+minute and a half or more before its line is printed.
+
+Exit codes: 0 printed; 1 LexAPI or the model failed; 2 a usage or configuration error, found before
+any request. With `--via mcp`, a refused call prints the MCP tool's own error text instead,
+on one line, with the same exit code; an answer from the tool that cannot be read is an error too,
+not "no supporting text".
+
 ### The MCP route
 
 `--via mcp` runs the same loop but retrieves through the LexAPI MCP server instead of the SDK:
@@ -134,7 +160,11 @@ through the SDK and through the real `@lexapi/mcp` server process, the two "no s
 paths, rejection and retry of an ungrounded draft, a draft and a search query shaped like a fake
 quoted section, every path by which model text reaches the output, ten well-behaved drafts in
 the styles models write, the sources-only fallback, removal of conclusion statements, the query
-bound, and the MCP truncation handling. The grounding rules themselves are tested from
+bound, the MCP truncation handling, and `test/cli.test.ts`: the command line run as a process
+against the stub and a local stand-in for the model API (exit code, stdout empty, no stack trace)
+for each refusal (credits exhausted, an exhausted quota, payment past due, a rate limit), a refusal
+after a charged search, an unreadable answer, a model-provider error, missing keys (exit 2, no
+request) and a refusal and an unreadable answer through the MCP route. The grounding rules themselves are tested from
 `shared/grounding-vectors.json`, which the Python suite runs too. Not covered by any test: the live API and a real model.
 
 ## Sample output (illustrative)

@@ -397,5 +397,7 @@ def test_strings_from_the_api_cannot_fake_a_section() -> None:
 @pytest.mark.parametrize("value", ["", "   "])
 def test_an_empty_key_is_missing_before_any_request(value: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LEXAPI_API_KEY", value)
-    with pytest.raises(SystemExit, match="^LEXAPI_API_KEY is not set. Create a key at https://lex-api.com/dashboard"):
+    with pytest.raises(
+        cli.ConfigError, match="^LEXAPI_API_KEY is not set. Create a key at https://lex-api.com/dashboard"
+    ):
         cli.create_client()

@@ -4,6 +4,8 @@ Ask a question about the GDPR (Regulation (EU) 2016/679). It answers with quotat
 regulation and from CJEU judgments, each with its CELEX number or ECLI and a EUR-Lex link, plus a
 short model-written summary kept apart from the quotes.
 
+Python 3.10 or later. The model is Anthropic's (default) or OpenAI's, through their SDKs.
+
 ## What it does not do
 
 - It is research support, not legal advice. It does not say what you must do or whether you comply.
@@ -93,11 +95,20 @@ an excerpt is quoted in context, or that the summary reads the sources correctly
   latest one held.
 - Without `--as-of`, the output makes no statement about the text in force on any date.
 
+## Install
+
+`lexapi-client` 0.5.0 is not on PyPI yet. `pyproject.toml` installs it from its repository, pinned
+to a commit, so installing this example needs `git`:
+
+```
+lexapi-client @ git+https://github.com/Lex-API/lexapi-python@e48dfdadf8fb4c2a05f4c6ec08f79146177a515e
+```
+
 ## Run it
 
 ```bash
 cd examples/gdpr-research-assistant
-python -m venv .venv && . .venv/bin/activate      # Python 3.10+
+python3 -m venv .venv && . .venv/bin/activate     # Python 3.10+
 pip install -e ".[anthropic]"                     # or ".[openai]"; keep -e: --dry-run reads the repository's fixtures
 
 # No keys: local stub + scripted model replies (synthetic texts)
@@ -108,6 +119,28 @@ cp .env.example .env                              # then fill it in
 gdpr-assistant "When may personal data be transferred to a third country?"
 gdpr-assistant --as-of 2019-06-01 "When may personal data be transferred to a third country?"
 ```
+
+### When a run fails
+
+Nothing is printed on stdout; stderr gets one line per problem:
+
+- **LexAPI refused a request** (for example 401, a key it does not accept; 402, credits exhausted;
+  403, payment past due; 429, a rate limit or an exhausted quota): the line the LexAPI adapters
+  for LangChain and LlamaIndex print, `LexAPI error <code> (HTTP <status>): <message>.`, followed,
+  when the error carries them, by when the credits or the quota reset, when access ended and the
+  billing link (payment past due), and the wait (a rate limit). After a key or credits error the
+  dashboard link follows on a line of its own. An answer the example cannot read gives
+  `LexAPI error INVALID_RESPONSE (HTTP 200): The answer could not be read.` When earlier calls of
+  the run were charged, their credits line comes first.
+- **The model provider failed**: `Model error: <the provider's message>`.
+- **A key or setting is missing**: one line naming it, before any request.
+
+The SDK retries rate limits and gateway or connection errors by itself (up to 3 retries, each wait
+capped at 30 s) and waits up to 95 s for each answer, so a refused or hanging call can take a
+minute and a half or more before its line is printed.
+
+Exit codes: 0 printed; 1 LexAPI or the model failed; 2 a usage or configuration error, found before
+any request. Ctrl-C ends the run with exit code 130, without a traceback.
 
 ## Cost
 
@@ -132,8 +165,12 @@ usage is billed separately by your model provider.
 "no supporting text" paths, rejection and retry of an ungrounded draft, a draft shaped like a fake
 quoted section, every path by which model text reaches the output, ten well-behaved drafts, the
 sources-only fallback, "not reported" credits, paragraph selection, the grounding rules (from
-`shared/grounding-vectors.json`, which the TypeScript suite runs too), and the model adapters
-against fake provider clients.
+`shared/grounding-vectors.json`, which the TypeScript suite runs too), the model adapters
+against fake provider clients, and `tests/test_errors.py`: the lines and exit code for each refusal
+(credits exhausted, an exhausted quota, payment past due, a rate limit, a key error, a server error,
+a timeout, an unreadable answer), a refusal after a charged call, a model-provider error, missing
+keys (exit 2, no request) and Ctrl-C, in process and with the command line run as a process
+against the stub and a local stand-in for the model API.
 Not covered by any test: the live API and a real model.
 
 ## Sample output (illustrative)

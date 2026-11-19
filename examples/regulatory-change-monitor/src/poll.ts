@@ -12,6 +12,7 @@
 import type { LexAPI, SearchResult } from "@lexapi/client";
 import { CreditTally, creditsCharged } from "../../../shared/env.ts";
 import { eurLexUrl } from "../../../shared/grounding.ts";
+import { UnreadableAnswerError } from "../../../shared/lexapi-error.ts";
 import type { Item } from "./items.ts";
 import { takeNew, type MonitorState } from "./state.ts";
 import type { Topic, WatchedAct, Watchlist } from "./watchlist.ts";
@@ -27,10 +28,23 @@ export interface PollResult {
 
 const RELATIONS = ["amendment", "corrigendum", "repeal"] as const;
 
-export async function poll(client: LexAPI, watchlist: Watchlist, state: MonitorState, now: Date = new Date()): Promise<PollResult> {
+/** An answer that is not an object, or whose list field is not a list of objects. */
+function listOf(response: unknown, name: string, optional = false): unknown[] {
+  const value = response && typeof response === "object" ? (response as Record<string, unknown>)[name] : undefined;
+  if (optional && value === undefined) return [];
+  if (!Array.isArray(value) || !value.every((row) => row !== null && typeof row === "object")) throw new UnreadableAnswerError(200);
+  return value;
+}
+
+export async function poll(
+  client: LexAPI,
+  watchlist: Watchlist,
+  state: MonitorState,
+  now: Date = new Date(),
+  tally: CreditTally = new CreditTally(),
+): Promise<PollResult> {
   const items: Item[] = [];
   const notices: string[] = [];
-  const tally = new CreditTally();
   const firstSeen = now.toISOString();
 
   const report = (candidates: Item[]): void => {
@@ -64,6 +78,7 @@ export async function poll(client: LexAPI, watchlist: Watchlist, state: MonitorS
 
 async function pollAct(client: LexAPI, act: WatchedAct): Promise<{ found: Item[]; notice?: string; credits: number | undefined }> {
   const response = await client.getCitedBy(act.celex, { citationType: [...RELATIONS], limit: 100 });
+  listOf(response, "citedBy");
   const found: Item[] = [];
   for (const group of response.citedBy) {
     const celex = group.celexNumber;
@@ -109,13 +124,13 @@ async function pollTopic(
 
   if (topic.query) {
     const response = await client.search({ query: topic.query, dateFrom, documentType: topic.documentType, maxPages: 1 });
-    results = response.results ?? [];
+    results = listOf(response, "results", true) as SearchResult[];
     credits = creditsCharged(response);
     if (response.truncated) notes.push(`more results exist than one page (${response.truncatedReason ?? "plan page limit"})`);
     if (response.partial) notes.push(`results may be incomplete (${response.partialReason ?? "partial answer"})`);
   } else {
     const response = await client.getRecentDocuments({ days, documentType: topic.documentType, limit: 10 });
-    results = response.results;
+    results = listOf(response, "results") as SearchResult[];
     credits = creditsCharged(response);
     if ((response.totalResults ?? 0) > results.length) notes.push(`${response.totalResults} documents match; only ${results.length} were read`);
   }
