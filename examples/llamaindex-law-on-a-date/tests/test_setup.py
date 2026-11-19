@@ -72,7 +72,20 @@ def test_an_unfilled_copy_of_the_env_example_stops_every_real_run(
     assert capsys.readouterr().err.splitlines() == printed
 
 
-@pytest.mark.parametrize("value", ["", "   ", "lex_your_key_here", "<your LexAPI key>", "lex_...", " YOUR_KEY "])
+SHIPPED_PLACEHOLDERS = ["lex_your_key_here"]  # every key value a .env.example of this repository has shipped
+REAL_LOOKING_KEYS = [
+    "sk-ant-api03-Qx7" + "9YoURO" + "k2mP4vT8wZ1nB6cD3fG5hJ0lA-xyz",  # contains "your" by chance
+    "lex_replace" + "a1b2c3d4e5f6",
+    "lex_placeholder" + "9f8e7d6c",
+    "lex_ab...cd" + "0123456789",
+    "lex_live_" + "0123456789abcdef" * 4,
+]
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["", "   ", *SHIPPED_PLACEHOLDERS, "LEX_YOUR_KEY_HERE", " lex_your_key_here ", "<key>", "<your LexAPI key>"],
+)
 def test_a_blank_or_placeholder_key_is_not_set(value: str, monkeypatch: pytest.MonkeyPatch, capsys: Any) -> None:
     monkeypatch.setenv("LEXAPI_API_KEY", value)
     stub = Stub()
@@ -80,6 +93,14 @@ def test_a_blank_or_placeholder_key_is_not_set(value: str, monkeypatch: pytest.M
     assert stub.requests == []
     assert capsys.readouterr().err == LEXAPI_MISSING + "\n"
     assert cli.env_key("LEXAPI_API_KEY") is None
+
+
+@pytest.mark.parametrize("value", REAL_LOOKING_KEYS)
+def test_real_looking_keys_are_accepted(value: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LEXAPI_API_KEY", value)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", f"  {value}  ")
+    assert cli.env_key("LEXAPI_API_KEY") == value and cli.env_key("ANTHROPIC_API_KEY") == value
+    cli.require_keys(["LEXAPI_API_KEY", "ANTHROPIC_API_KEY"])
 
 
 def test_a_real_looking_key_is_used_without_surrounding_spaces(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -157,27 +178,58 @@ def test_a_key_or_credits_error_ends_with_the_dashboard_link(code: str) -> None:
     assert line == f"LexAPI error {code} (HTTP 402): Placeholder. {DASHBOARD}"
 
 
+BILLING_URL = "https://lex-api.com/dashboard#billing"
+
+
 def test_other_errors_and_billing_errors_get_no_dashboard_link() -> None:
     assert cli.refusal_line("LexAPI error RATE_LIMITED (HTTP 429): Slow down.", "RATE_LIMITED") == (
         "LexAPI error RATE_LIMITED (HTTP 429): Slow down."
     )
-    billing = "LexAPI error CREDITS_EXHAUSTED (HTTP 402): Placeholder. Billing: https://lex-api.com/dashboard#billing"
-    assert cli.refusal_line(billing, "CREDITS_EXHAUSTED") == billing
+    billing = f"LexAPI error CREDITS_EXHAUSTED (HTTP 402): Placeholder. Billing: {BILLING_URL}"
+    assert cli.refusal_line(billing, "CREDITS_EXHAUSTED", billing_url=BILLING_URL) == billing
+
+
+def test_billing_text_in_the_message_does_not_suppress_the_dashboard_link() -> None:
+    message = "LexAPI error CREDITS_EXHAUSTED (HTTP 402): Placeholder Billing: not a link " + "x" * 1000 + "."
+    line = cli.refusal_line(message, "CREDITS_EXHAUSTED")
+    assert line.endswith("... " + DASHBOARD)
+    assert len(line) == 303 + 1 + len(DASHBOARD)
+
+
+def test_the_fields_after_a_long_message_are_kept_whole() -> None:
+    end = f" Credits reset at 2026-07-01T00:00:00Z. Billing: {BILLING_URL} Retry after 7 s."
+    text = "LexAPI error PAYMENT_PAST_DUE (HTTP 403): " + "x" * 1000 + "." + end
+    line = cli.refusal_line(
+        text, "PAYMENT_PAST_DUE", resets_at="2026-07-01T00:00:00Z", billing_url=BILLING_URL, retry_after=7.0
+    )
+    assert line.endswith("..." + end)
+    assert len(line) == 303 + len(end)
+
+
+def test_a_key_across_the_cut_stays_masked(monkeypatch: pytest.MonkeyPatch) -> None:
+    key = "sk-ant-api03-" + "Zq" * 20
+    monkeypatch.setenv("ANTHROPIC_API_KEY", key)
+    line = cli.refusal_line("LexAPI error X (HTTP 400): " + "x" * 270 + key + " more.", "X")
+    assert line.endswith("x[ke...")  # masked first, then cut
+    assert not any(key[i : i + 4] in line for i in range(len(key) - 3))
+
+
+def test_control_characters_in_a_billing_link_are_removed() -> None:
+    url = "https://lex-api.com/\x1b[2Jbilling\u202e"
+    line = cli.refusal_line(f"LexAPI error P (HTTP 403): Due. Billing: {url}", "P", billing_url=url)
+    assert "\x1b" not in line and "\u202e" not in line and line.endswith("Billing: https://lex-api.com/ [2Jbilling")
 
 
 @pytest.mark.parametrize(
     ("tail", "code", "kept"),
     [
-        (
-            " Billing: https://lex-api.com/dashboard#billing",
-            "PAYMENT_PAST_DUE",
-            "Billing: https://lex-api.com/dashboard#billing",
-        ),
+        (" Billing: https://lex-api.com/dashboard#billing", "PAYMENT_PAST_DUE", f"Billing: {BILLING_URL}"),
         ("", "CREDITS_EXHAUSTED", DASHBOARD),
     ],
 )
 def test_a_long_message_is_cut_but_never_its_link(tail: str, code: str, kept: str) -> None:
-    line = cli.refusal_line(f"LexAPI error {code} (HTTP 402): " + "x" * 1000 + "." + tail, code)
+    billing = BILLING_URL if tail else None
+    line = cli.refusal_line(f"LexAPI error {code} (HTTP 402): " + "x" * 1000 + "." + tail, code, billing_url=billing)
     assert line.endswith("... " + kept)
     assert len(line) == 303 + 1 + len(kept)
 
@@ -191,3 +243,30 @@ def test_a_connection_error_is_one_line_without_an_http_status(monkeypatch: pyte
     err = capsys.readouterr().err
     assert code == 1
     assert len(err.splitlines()) == 1 and err.startswith("LexAPI error CONNECTION_ERROR: ") and "(HTTP" not in err
+
+
+def test_a_byte_order_mark_does_not_hide_the_first_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    unset(monkeypatch, "LEXAPI_API_KEY")
+    env = tmp_path / ".env"
+    env.write_bytes("LEXAPI_API_KEY=lex_AbC123\n".encode("utf-8-sig"))
+    REAL_LOAD_ENV_FILE(env)
+    assert os.environ["LEXAPI_API_KEY"] == "lex_AbC123"
+
+
+@pytest.mark.parametrize("value", ["\uff12\uff10\uff12\uff15-01-17", "2025-01-\u0661\u0667"])
+def test_non_ascii_digits_are_a_malformed_date(value: str) -> None:
+    with pytest.raises(Exception, match="expected a date written YYYY-MM-DD"):
+        cli.date_arg(value)
+
+
+def test_the_model_client_gets_the_trimmed_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    made: list[dict[str, Any]] = []
+
+    def record(**kwargs: Any) -> object:
+        made.append(kwargs)
+        return object()
+
+    monkeypatch.setattr(cli, "Anthropic", record)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "  sk-ant-api03-placeholder-test  \t")
+    cli.create_llm()
+    assert made and made[0]["api_key"] == "sk-ant-api03-placeholder-test"

@@ -14,7 +14,7 @@ SHARED = {
     "cli.py": (
         *("DEFAULT_ANTHROPIC_MODEL", "USER_AGENT_SUFFIX", "LOCAL_PREFIX", "DASHBOARD_URL", "KEY_HELP"),
         *("FIRST_DATE", "ACT", "DATE_ASKED", "CREDITS_USED", "NOTICE_MEANING", "CLOSING", "ConfigError"),
-        *("_DATE", "_EXPORT", "_PLACEHOLDER", "_DASHBOARD_CODES"),
+        *("_DATE", "_EXPORT", "PLACEHOLDERS", "_DASHBOARD_CODES", "error_fields"),
         *("clean", "today", "date_arg", "not_blank", "answer_heading", "load_env_file", "env_key"),
         *("require_keys", "create_client", "one_line", "refusal_line", "model_failure"),
     ),

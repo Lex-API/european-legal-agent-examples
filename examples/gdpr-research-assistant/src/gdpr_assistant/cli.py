@@ -32,7 +32,7 @@ def load_env_file(path: Path) -> None:
 
 def create_client() -> LexAPI:
     """The LexAPI client, from LEXAPI_API_KEY (never hard-code it) and the optional LEXAPI_BASE_URL."""
-    api_key = os.environ.get("LEXAPI_API_KEY")
+    api_key = os.environ.get("LEXAPI_API_KEY", "").strip()
     if not api_key:
         raise SystemExit(
             "LEXAPI_API_KEY is not set. Create a key at https://lex-api.com/dashboard?ref=github-examples"

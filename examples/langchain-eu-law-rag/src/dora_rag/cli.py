@@ -23,7 +23,7 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.documents import Document
 from langchain_core.language_models import BaseChatModel
 from langchain_lexapi import LexAPILegislationRetriever, RetrievalReport
-from lexapi import LexAPI, LexAPIError
+from lexapi import CreditsExhaustedError, LexAPI, LexAPIError, PaymentPastDueError
 
 from dora_rag import offline
 from dora_rag.rag import (
@@ -54,9 +54,9 @@ CLOSING = (
     "Research support, not legal advice. The answer is model-written and may misread the passages; "
     "check it against the sources."
 )
-_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_DATE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 _EXPORT = re.compile(r"^export\s+")
-_PLACEHOLDER = re.compile(r"your|changeme|change_me|replace|placeholder|[<>]|\.\.\.", re.IGNORECASE)
+PLACEHOLDERS = frozenset({"lex_your_key_here"})  # the key values this repository's .env.example files shipped
 _DASHBOARD_CODES = frozenset({"UNAUTHORIZED", "INVALID_API_KEY", "CREDITS_EXHAUSTED"})
 KEY_HELP = {
     "LEXAPI_API_KEY": f"Create a key at {DASHBOARD_URL} or use --dry-run.",
@@ -184,16 +184,18 @@ def load_env_file(path: Path) -> None:
     """Load ``KEY=value`` lines (also ``export KEY=value``) into the environment (existing variables win)."""
     if not path.exists():
         return
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in path.read_text(encoding="utf-8-sig").splitlines():
         key, sep, value = _EXPORT.sub("", line.strip(), count=1).partition("=")
         if sep and key and not key.startswith("#"):
             os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
 
 
 def env_key(name: str) -> str | None:
-    """The key in the environment variable ``name``; None when it is unset, blank or a placeholder."""
+    """The key in ``name``, trimmed; None when unset, blank, a placeholder this repository shipped, or ``<...>``."""
     value = os.environ.get(name, "").strip()
-    return None if not value or _PLACEHOLDER.search(value) else value
+    if not value or value.lower() in PLACEHOLDERS or (value.startswith("<") and value.endswith(">")):
+        return None
+    return value
 
 
 def require_keys(names: Sequence[str]) -> None:
@@ -209,7 +211,7 @@ def create_client(transport: httpx.BaseTransport | None = None) -> LexAPI:
     ``transport`` replaces the network (tests and --dry-run); the base URL must then be a 127.0.0.1 one.
     """
     require_keys(["LEXAPI_API_KEY"])
-    api_key = os.environ["LEXAPI_API_KEY"].strip()
+    api_key = env_key("LEXAPI_API_KEY") or ""  # set: checked just above
     base_url = os.environ.get("LEXAPI_BASE_URL")
     if transport is not None and not (base_url or "").startswith(LOCAL_PREFIX):
         raise RuntimeError(
@@ -225,7 +227,7 @@ def create_chat_model() -> tuple[BaseChatModel, str]:
     """Anthropic through langchain-anthropic: ANTHROPIC_API_KEY, ANTHROPIC_MODEL (default claude-sonnet-5-5)."""
     require_keys(["ANTHROPIC_API_KEY"])
     name = os.environ.get("ANTHROPIC_MODEL") or DEFAULT_ANTHROPIC_MODEL
-    return ChatAnthropic(model=name, max_tokens=2000), f"anthropic:{name}"
+    return ChatAnthropic(model=name, max_tokens=2000, api_key=env_key("ANTHROPIC_API_KEY")), f"anthropic:{name}"
 
 
 def one_line(text: str, *, keep: str = "") -> str:
@@ -246,16 +248,39 @@ def one_line(text: str, *, keep: str = "") -> str:
     return f"{message} {link}" if link else message
 
 
-def refusal_line(text: str, code: str) -> str:
+def error_fields(error: LexAPIError) -> dict[str, Any]:
+    """What the adapters put after the API's message, from the error's own fields."""
+    return {
+        "resets_at": error.resets_at if isinstance(error, CreditsExhaustedError) else None,
+        "billing_url": error.billing_url if isinstance(error, PaymentPastDueError) else None,
+        "retry_after": error.retry_after,
+    }
+
+
+def refusal_line(
+    text: str,
+    code: str,
+    *,
+    resets_at: str | None = None,
+    billing_url: str | None = None,
+    retry_after: float | None = None,
+) -> str:
     """The adapter's error line on one line; after a key or credits error without a billing link, the dashboard.
 
-    A long message is cut; the API's billing link and the dashboard link are never cut.
+    The adapters end the line with what the error's fields say (credits reset time, billing link, retry
+    delay), in that order. A long message is cut; that end and the dashboard link never are.
     """
-    message, billing, rest = text.partition(" Billing: ")
-    link = f"Billing: {rest}" if billing else ""
-    if code in _DASHBOARD_CODES and not billing:
-        link = f"Dashboard: {DASHBOARD_URL}"
-    return one_line(message, keep=link)
+    tail = [
+        f"Credits reset at {resets_at}." if resets_at else "",
+        f"Billing: {billing_url}" if billing_url else "",
+        f"Retry after {retry_after:g} s." if retry_after is not None else "",
+    ]
+    end = "".join(f" {part}" for part in tail if part)
+    message = text[: len(text) - len(end)] if end and text.endswith(end) else text
+    kept = end if message is not text else ""
+    if code in _DASHBOARD_CODES and not billing_url:
+        kept += f" Dashboard: {DASHBOARD_URL}"
+    return one_line(message, keep=kept)
 
 
 def adapter_error_text(error: LexAPIError) -> str:
@@ -267,7 +292,11 @@ def adapter_error_text(error: LexAPIError) -> str:
 
 def refusal(error: LexAPIError) -> str:
     """A LexAPI refusal or unreadable answer, in the adapter's one-line form."""
-    return refusal_line(adapter_error_text(error), error.code)
+    try:
+        text = adapter_error_text(error)
+    except ImportError:  # the adapter no longer provides its error text
+        return one_line(f"LexAPI error: {error.code or type(error).__name__}")
+    return refusal_line(text, error.code, **error_fields(error))
 
 
 def model_failure(error: AnswerError | ModelCallError) -> str:

@@ -12,13 +12,14 @@ export function loadEnvFile(path: string): void {
  *   LEXAPI_BASE_URL  - optional; the tests and `--dry-run` point it at a local stub.
  */
 export function createLexApiClient(env: NodeJS.ProcessEnv = process.env): LexAPI {
-  if (!env.LEXAPI_API_KEY) {
+  const apiKey = env.LEXAPI_API_KEY?.trim();
+  if (!apiKey) {
     throw new Error(
       "LEXAPI_API_KEY is not set. Create a key at https://lex-api.com/dashboard?ref=github-examples or run with --dry-run.",
     );
   }
   return new LexAPI({
-    apiKey: env.LEXAPI_API_KEY,
+    apiKey,
     ...(env.LEXAPI_BASE_URL ? { baseUrl: env.LEXAPI_BASE_URL } : {}),
     userAgentSuffix: "european-legal-agent-examples",
   });

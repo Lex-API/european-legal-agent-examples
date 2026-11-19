@@ -254,6 +254,14 @@ def test_two_texts_of_the_provision_from_different_versions_are_both_kept() -> N
     assert pipeline.other_versions(None, combined) == []
 
 
+def test_the_different_version_line_names_only_this_provisions_versions() -> None:
+    lookup = passage("provided", version_celex="32016R0679")
+    other_provision = passage("provided", part="art_21", version_celex="02016R0679-20990101")
+    combined = pipeline.combine(lookup, [other_provision])
+    assert len(combined) == 2
+    assert pipeline.other_versions(lookup, combined) == []
+
+
 def test_version_ids_are_compared_ignoring_case() -> None:
     lookup = passage("provided", version_celex="02016R0679-20990101")
     copy = passage("provided", version_celex=" 02016r0679-20990101")
