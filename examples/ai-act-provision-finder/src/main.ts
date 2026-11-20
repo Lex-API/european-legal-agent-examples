@@ -11,12 +11,45 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { DRY_RUN_BANNER, startDryRun } from "../../../offline/dry-run.ts";
-import { ConfigError, requireSettings, runCli } from "../../../shared/cli.ts";
+import { ConfigError, markInterrupted, requireSettings, runCli } from "../../../shared/cli.ts";
 import { CreditTally, createLexApiClient, loadEnvFile } from "../../../shared/env.ts";
 import { createLlmFromEnv, type Llm } from "../../../shared/llm.ts";
 import { findProvisions } from "./agent.ts";
 import { McpLegislationSearch } from "./retrieve-mcp.ts";
 import { SdkLegislationSearch, type LegislationSearch } from "./retrieve.ts";
+
+/** SIGTERM the MCP server at once; SIGKILL it if it is still there after 300 ms; then `done`. */
+function terminate(pid: number, done: () => void): void {
+  const alive = () => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    done();
+    return;
+  }
+  const started = Date.now();
+  const poll = setInterval(() => {
+    if (!alive()) {
+      clearInterval(poll);
+      done();
+    } else if (Date.now() - started >= 300) {
+      clearInterval(poll);
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        // gone in the meantime
+      }
+      done();
+    }
+  }, 10);
+}
 
 const USAGE = 'Usage: npm run ai-act -- [--dry-run] [--via sdk|mcp] [--max-queries N] "<description of the AI system>"';
 const tally = new CreditTally();
@@ -60,12 +93,17 @@ await runCli(
 
     let search: LegislationSearch | undefined;
     // Ctrl-C or a termination signal: stop the MCP server process first, so it does not outlive this one.
+    // The handlers stay installed, so a second signal cannot reach the default handler and orphan the server.
+    let stopping = false;
     const stop = (signal: NodeJS.Signals, code: number) =>
-      process.once(signal, () => {
+      process.on(signal, () => {
+        if (stopping) return;
+        stopping = true;
+        markInterrupted();
         console.error("Interrupted.");
-        void Promise.resolve(search?.close())
-          .catch(() => {})
-          .finally(() => process.exit(code));
+        const pid = search instanceof McpLegislationSearch ? search.pid : null;
+        if (!pid) process.exit(code);
+        terminate(pid, () => process.exit(code));
       });
     stop("SIGINT", 130);
     stop("SIGTERM", 143);

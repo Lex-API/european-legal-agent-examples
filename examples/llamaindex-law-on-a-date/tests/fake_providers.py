@@ -13,8 +13,8 @@ from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-#: ``(status, body)``: a body that is not a dict is sent as text/html.
-Fault = tuple[int, Any]
+#: ``(status, body)`` or ``(status, raw text, content type)``: a body that is not a dict is sent as text/html.
+Fault = tuple[Any, ...]
 
 
 @dataclass
@@ -39,8 +39,7 @@ class FakeProviders:
                 body = json.loads(self.rfile.read(int(self.headers.get("content-length") or 0)) or b"{}")
                 fake.requests.append((self.path, body, {k.lower(): v for k, v in self.headers.items()}))
                 if fake.fault is not None:
-                    status, payload = fake.fault
-                    self._send(status, payload)
+                    self._send(*fake.fault)
                 elif self.path.endswith("/messages"):
                     self._send(200, fake._anthropic(body))
                 elif self.path.endswith("/chat/completions"):
@@ -48,10 +47,11 @@ class FakeProviders:
                 else:
                     self._send(404, {"error": {"message": f"no stand-in for {self.path}"}})
 
-            def _send(self, status: int, payload: Any) -> None:
+            def _send(self, status: int, payload: Any, content_type: str | None = None) -> None:
                 raw = json.dumps(payload).encode() if isinstance(payload, dict) else str(payload).encode()
                 self.send_response(status)
-                self.send_header("content-type", "application/json" if isinstance(payload, dict) else "text/html")
+                default = "application/json" if isinstance(payload, dict) else "text/html"
+                self.send_header("content-type", content_type or default)
                 self.send_header("content-length", str(len(raw)))
                 self.end_headers()
                 self.wfile.write(raw)

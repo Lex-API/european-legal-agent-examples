@@ -70,7 +70,7 @@ export interface FakeModel {
 }
 
 /** An error answer: a provider error body with `message`, or `raw` text (an HTML page from a proxy). */
-export type ModelFault = { status: number; message: string } | { status: number; raw: string };
+export type ModelFault = { status: number; message: string } | { status: number; raw: string; contentType?: string };
 
 /**
  * A local stand-in for the Anthropic Messages API (`POST /v1/messages`) and the OpenAI Chat
@@ -89,7 +89,7 @@ export async function startFakeModel(script: string, fail?: ModelFault, onReques
       onRequest?.();
       if (fail) {
         if ("raw" in fail) {
-          res.writeHead(fail.status, { "content-type": "text/html" }).end(fail.raw);
+          res.writeHead(fail.status, { "content-type": fail.contentType ?? "text/html" }).end(fail.raw);
         } else {
           const body = { type: "error", error: { type: "invalid_request_error", message: fail.message } };
           res.writeHead(fail.status, { "content-type": "application/json" }).end(JSON.stringify(body));

@@ -9,6 +9,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startFakeModel, type ModelFault } from "../offline/process-harness.ts";
+import { readFixture } from "../offline/stub-server.ts";
+import { describeFailure } from "./cli.ts";
 import { blockExternalFetch } from "../offline/guard.ts";
 import { TEST_IGNORE_DOTENV, loadEnvFile } from "./env.ts";
 import { LlmError, ScriptedLlm, createLlmFromEnv, type LlmRequest } from "./llm.ts";
@@ -173,5 +175,19 @@ test("the .env test hook is honoured only for the exact value 1", () => {
     delete process.env[TEST_IGNORE_DOTENV];
     delete process.env.EXAMPLES_DOTENV_PROBE;
     rmSync(folder, { recursive: true, force: true });
+  }
+});
+
+test("a provider error reads the same in every example: the message, else HTTP <status> and the body as sent", async () => {
+  const { cases } = JSON.parse(readFixture("llm/provider-errors.json")) as {
+    cases: Array<{ name: string; status: number; contentType: string; raw: string; printed: string }>;
+  };
+  for (const [provider, env] of Object.entries(REAL)) {
+    for (const answer of cases) {
+      await withFake({ status: answer.status, raw: answer.raw, contentType: answer.contentType }, async () => {
+        const error = await (await createLlmFromEnv(env)).generate(PLAN_REQUEST).then(() => undefined, (thrown: unknown) => thrown);
+        assert.deepEqual(describeFailure(error)?.lines, [answer.printed], `${provider}, ${answer.name}`);
+      });
+    }
   }
 });

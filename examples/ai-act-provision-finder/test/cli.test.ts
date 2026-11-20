@@ -303,3 +303,50 @@ test("LLM_PROVIDER: an unknown value is a configuration error before any request
     await fake.close();
   }
 });
+
+test("two Ctrl-C in a row during an MCP call: exit 130, one line, and no MCP server process left", async () => {
+  let child: number[] = [];
+  let cliPid = 0;
+  const stub = await startStubServer({
+    override: () => {
+      child = mcpChildOf(cliPid);
+      process.kill(cliPid, "SIGINT");
+      setTimeout(() => process.kill(cliPid, "SIGINT"), 5);
+      return "hang";
+    },
+  });
+  const fake = await startFakeModel("ai-act");
+  try {
+    const run = await runExample(ENTRY, ["--via", "mcp", DESCRIPTION], realRunEnv(stub.baseUrl, fake), (pid) => (cliPid = pid));
+    assert.equal(run.code, 130, run.stderr);
+    assert.equal(run.stderr, "Interrupted.\n");
+    assert.equal(child.length, 1);
+    assert.equal(alive(child[0]!), false); // gone when the example exits: terminated, not left to a graceful close
+  } finally {
+    await stub.close();
+    await fake.close();
+  }
+});
+
+test("Ctrl-C during the plan (the model call) on the MCP route prints only Interrupted.", async () => {
+  let cliPid = 0;
+  let child: number[] = [];
+  const stub = await startStubServer();
+  const fake = await startFakeModel("ai-act", undefined, () => {
+    if (child.length > 0) return;
+    child = mcpChildOf(cliPid);
+    process.kill(cliPid, "SIGINT");
+    execFileSync(process.execPath, ["-e", "setTimeout(() => {}, 200)"]); // answer the plan after the signal
+  });
+  try {
+    const run = await runExample(ENTRY, ["--via", "mcp", DESCRIPTION], realRunEnv(stub.baseUrl, fake), (pid) => (cliPid = pid));
+    assert.equal(run.code, 130, run.stderr);
+    assert.equal(run.stderr, "Interrupted.\n");
+    assert.equal(child.length, 1);
+    await waitUntilGone(child);
+    assert.equal(alive(child[0]!), false);
+  } finally {
+    await stub.close();
+    await fake.close();
+  }
+});

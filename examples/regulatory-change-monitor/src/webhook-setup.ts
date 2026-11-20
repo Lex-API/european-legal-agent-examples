@@ -54,7 +54,7 @@ export function deliveryFailed(
   const status = clean(delivery?.status, 200) ?? "unknown";
   const httpCode = typeof delivery?.responseStatus === "number" ? delivery.responseStatus : undefined;
   const message = clean(delivery?.errorMessage, 300);
-  if (status === "SUCCESS" || status === "unknown") {
+  if (status.toUpperCase() === "SUCCESS" || status === "unknown") {
     const said = success === undefined ? "missing" : (clean(String(success), 200) ?? "missing");
     const http = httpCode === undefined ? "" : `, HTTP ${httpCode}`;
     return mask(`Test delivery: not confirmed (success: ${said}, status: ${status}${http})${message ? ` - ${message}` : ""}`);
@@ -90,7 +90,7 @@ export async function setUpWebhook(
     test = await client.webhooks.test(id);
     if (!test?.delivery || typeof test.delivery !== "object") throw new UnreadableAnswerError(200);
     // Success, as the SDK types it: `success: true` and a delivery with status SUCCESS.
-    if (test.success !== true || test.delivery.status !== "SUCCESS") throw new PrintedError(deliveryFailed(test.success, test.delivery));
+    if (test.success !== true || String(test.delivery.status).toUpperCase() !== "SUCCESS") throw new PrintedError(deliveryFailed(test.success, test.delivery));
   } catch (error) {
     console.error(createdButNotTested(id));
     throw error;

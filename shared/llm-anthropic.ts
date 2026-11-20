@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { LlmError, providerMessage, type Llm, type LlmRequest } from "./llm.ts";
+import { LlmError, providerMessage, recordingFetch, type Llm, type LlmRequest } from "./llm.ts";
 
 export const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5-5";
 
@@ -15,11 +15,13 @@ export class AnthropicLlm implements Llm {
   readonly label: string;
   private readonly client: Anthropic;
   private readonly model: string;
+  /** Keeps the body of the last error answer, as sent. */
+  private readonly recorder = recordingFetch();
 
   constructor(options: { model?: string; client?: Anthropic; apiKey?: string } = {}) {
     this.model = options.model || DEFAULT_ANTHROPIC_MODEL;
     // Without an apiKey, the SDK reads ANTHROPIC_API_KEY itself.
-    this.client = options.client ?? new Anthropic(options.apiKey ? { apiKey: options.apiKey } : {});
+    this.client = options.client ?? new Anthropic({ ...(options.apiKey ? { apiKey: options.apiKey } : {}), fetch: this.recorder.fetch });
     this.label = `anthropic:${this.model}`;
   }
 
@@ -45,7 +47,7 @@ export class AnthropicLlm implements Llm {
           messages,
       })
         .catch((error: unknown) => {
-          throw new LlmError(providerMessage(error, "ANTHROPIC_API_KEY")); // the provider refused or could not be reached
+          throw new LlmError(providerMessage(error, "ANTHROPIC_API_KEY", this.recorder.lastErrorBody())); // the provider refused or could not be reached
         });
 
       if (response.stop_reason === "refusal") {

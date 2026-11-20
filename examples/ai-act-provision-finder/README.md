@@ -125,9 +125,10 @@ Nothing is printed on stdout; stderr gets one line per problem:
 - **The MCP server process failed** (`--via mcp`: it could not be started, ended before or during
   a call, or did not answer in time): `MCP server error: <message>`, exit code 1.
 
-With `--via mcp`, Ctrl-C or a termination signal stops the MCP server process before the example
-exits (exit code 130 or 143); a SIGKILL of the example cannot be handled, so the server process
-may then outlive it.
+With `--via mcp`, Ctrl-C (a second one too) or a termination signal ends the MCP server process at
+once (SIGTERM, then SIGKILL if it is still there after 300 ms) before the example exits with code 130
+or 143, printing only `Interrupted.`; a SIGKILL of the example cannot be handled, so the server
+process may then outlive it.
 
 The SDK retries rate limits and gateway or connection errors by itself (up to 3 retries, each wait
 capped at 30 s) and waits up to 95 s for each answer, so a refused or hanging call can take a

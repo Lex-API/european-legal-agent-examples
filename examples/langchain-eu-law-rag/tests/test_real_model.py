@@ -4,6 +4,9 @@ request to a local stand-in for the Anthropic API on 127.0.0.1, and its answer i
 from __future__ import annotations
 
 import io
+import json
+from pathlib import Path
+from typing import Any
 
 import pytest
 from conftest import Stub
@@ -54,3 +57,18 @@ def test_a_provider_error_is_its_message_or_its_status(
     assert code == 1 and out == ""
     assert err.splitlines()[-1] == printed
     assert "sk-fake-offline-test-not-a-key" not in err
+
+
+ERRORS = json.loads(
+    (Path(__file__).resolve().parents[3] / "offline" / "fixtures" / "llm" / "provider-errors.json").read_text()
+)
+
+
+@pytest.mark.parametrize("answer", ERRORS["cases"], ids=lambda answer: answer["name"])
+def test_a_provider_error_reads_the_same_in_every_example(
+    answer: dict[str, Any], stub: Stub, providers: FakeProviders, capsys: pytest.CaptureFixture[str]
+) -> None:
+    providers.fault = (answer["status"], answer["raw"], answer["contentType"])
+    code, out, err = run(stub, capsys)
+    assert code == 1 and out == ""
+    assert err.splitlines()[-1] == answer["printed"]

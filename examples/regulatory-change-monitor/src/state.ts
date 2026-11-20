@@ -1,4 +1,4 @@
-import { chmodSync, lstatSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, lstatSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { ConfigError } from "../../../shared/cli.ts";
 
@@ -99,10 +99,28 @@ export function loadState(path: string): MonitorState {
   if (!state.seen || typeof state.seen !== "object" || Array.isArray(state.seen) || !strings(state.baselined) || !strings(state.deliveries)) {
     throw unreadable;
   }
-  return state;
+  return normaliseCelex(state);
 }
 
-/** Remove this monitor's leftover temporary files for this state file (a killed run's); nothing else. */
+/** CELEX numbers as the watch list has them (trimmed, upper case), also in a state file an earlier version wrote. */
+function normaliseCelex(state: MonitorState): MonitorState {
+  const celex = (value: string) => value.trim().toUpperCase();
+  const seen: Record<string, string> = {};
+  for (const [key, when] of Object.entries(state.seen)) {
+    // `act|<watched CELEX>|<relation>|<CELEX>` and `topic|<name>|<CELEX>`
+    const parts = key.split("|");
+    if (parts[0] === "act" && parts.length === 4) seen[`act|${celex(parts[1]!)}|${parts[2]}|${celex(parts[3]!)}`] = when;
+    else if (parts[0] === "topic" && parts.length === 3) seen[`topic|${parts[1]}|${celex(parts[2]!)}`] = when;
+    else seen[key] = when;
+  }
+  return { ...state, seen, baselined: [...new Set(state.baselined.map(celex))] };
+}
+
+/**
+ * Remove this monitor's leftover temporary files for this state file (a killed run's); nothing
+ * else. Best effort: only regular files and symlinks are unlinked (never followed, never a
+ * directory), and no error here ever fails a run.
+ */
 function removeStaleTemporaries(target: string): void {
   const pattern = TEMPORARY(target);
   let names: string[];
@@ -112,7 +130,14 @@ function removeStaleTemporaries(target: string): void {
     return;
   }
   for (const name of names) {
-    if (pattern.test(name) && name !== basename(temporaryFor(target))) rmSync(join(dirname(target), name), { force: true });
+    if (!pattern.test(name) || name === basename(temporaryFor(target))) continue;
+    const candidate = join(dirname(target), name);
+    try {
+      const entry = lstatSync(candidate);
+      if (entry.isFile() || entry.isSymbolicLink()) unlinkSync(candidate);
+    } catch {
+      // left as it is: a read-only directory, a file that went away, ...
+    }
   }
 }
 

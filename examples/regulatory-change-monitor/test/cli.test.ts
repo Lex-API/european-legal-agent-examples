@@ -3,7 +3,7 @@
  * as children against the local stub and a local stand-in for the model API.
  */
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -327,3 +327,55 @@ for (const [name, body, printed] of [
     assert.doesNotMatch(result.stdout, /Test delivery/);
   });
 }
+
+test("cleanup of a killed run's temporary files never fails a run: a directory with that name is left alone", async () => {
+  const state = statePath();
+  const name = state.split("/").pop()!;
+  const lookalike = join(dir, `.${name}.456.tmp`);
+  mkdirSync(lookalike);
+  writeFileSync(join(lookalike, "inside"), "x");
+  const result = await poll(undefined, 1, state);
+  assert.equal(result.code, 0, result.stderr);
+  assert.ok(statSync(lookalike).isDirectory() && existsSync(join(lookalike, "inside")));
+});
+
+test("a read-only state directory holding a stale temporary file: the digest, then the not-saved line, exit 1", { skip: process.getuid?.() === 0 && "root can write to a read-only directory" }, async () => {
+  const readOnly = mkdtempSync(join(dir, "read-only-stale-"));
+  const state = join(readOnly, "state.json");
+  const stale = join(readOnly, ".state.json.12345.tmp");
+  writeFileSync(stale, "{ partial");
+  chmodSync(readOnly, 0o555);
+  try {
+    const result = await poll(undefined, 1, state);
+    assert.equal(result.code, 1);
+    assert.match(result.stdout, /# Regulatory change digest/);
+    assert.deepEqual(result.stderr.trimEnd().split("\n"), ["LexAPI credits reported for this run: 8.", notSaved(state, "EACCES")]);
+    assert.doesNotMatch(result.stderr, STACK_TRACE);
+    assert.ok(existsSync(stale)); // could not be removed; that does not fail the run
+  } finally {
+    chmodSync(readOnly, 0o755);
+  }
+});
+
+test("a state file with CELEX numbers in lower case or padded (an earlier version, or edited by hand) is read as the watch list has them", async () => {
+  const clean = statePath();
+  const edited = statePath();
+  assert.equal((await poll(undefined, 1, clean)).code, 0);
+  const state = JSON.parse(readFileSync(clean, "utf8")) as { seen: Record<string, string>; baselined: string[] };
+  const lower = (key: string) => key.replace(/\|(\d{5}[A-Z]\d{4})/g, (_match, celex: string) => `| ${celex.toLowerCase()} `);
+  writeFileSync(edited, JSON.stringify({ ...state, baselined: state.baselined.map((c) => ` ${c.toLowerCase()} `), seen: Object.fromEntries(Object.entries(state.seen).map(([k, v]) => [lower(k), v])) }));
+  const fromClean = await poll(undefined, 1, clean);
+  const fromEdited = await poll(undefined, 1, edited);
+  assert.equal(fromEdited.code, 0, fromEdited.stderr);
+  const body = (out: string) => out.split("\n").filter((line) => !line.startsWith("Generated "));
+  assert.deepEqual(body(fromEdited.stdout), body(fromClean.stdout));
+  assert.doesNotMatch(fromEdited.stdout, /baseline recorded/);
+});
+
+test("webhook setup: a status in another case is still compared as SUCCESS, and a contradiction is not confirmed", async () => {
+  const result = await run(SETUP, { status: 200, body: { success: false, delivery: { status: "success", responseStatus: 200 } } }, 2, [], HOOK_URL);
+  assert.equal(result.code, 1);
+  assert.equal(result.stderr.trimEnd().split("\n")[1], "Test delivery: not confirmed (success: false, status: success, HTTP 200)");
+  const ok = await run(SETUP, { status: 200, body: { success: true, delivery: { status: "success", responseStatus: 200 } } }, 2, [], HOOK_URL);
+  assert.equal(ok.code, 0, ok.stderr);
+});

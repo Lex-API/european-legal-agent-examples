@@ -39,11 +39,11 @@ export class LlmError extends Error {
 
 /**
  * The provider's own message for a failed model call: the `error.message` of its error body
- * when there is one; otherwise `HTTP <status>: <the response text>` for an HTTP error, else the
+ * when there is one; otherwise `HTTP <status>: <the response body as sent>` for an HTTP error, else the
  * error's message. After a 401 or 403 it names the variable that holds the key (never the key).
  * The caller cleans, caps and masks it.
  */
-export function providerMessage(error: unknown, keyVariable?: string): string {
+export function providerMessage(error: unknown, keyVariable?: string, rawBody?: string): string {
   const failure = error as { error?: unknown; status?: unknown; message?: unknown };
   const body = failure?.error;
   const inner = body && typeof body === "object" ? (body as { error?: { message?: unknown }; message?: unknown }) : undefined;
@@ -52,12 +52,28 @@ export function providerMessage(error: unknown, keyVariable?: string): string {
   const text = error instanceof Error ? error.message : String(error);
   let message: string;
   if (typeof field === "string" && field.trim()) message = field;
-  else if (status !== undefined) message = `HTTP ${status}: ${text.replace(new RegExp(`^${status}\\s*`), "") || "no message"}`;
+  else if (status !== undefined) message = `HTTP ${status}: ${rawBody?.trim() || "no message"}`; // the body as sent
   else message = text;
   if ((status === 401 || status === 403) && keyVariable) {
     message = `${message.replace(/[: ]+$/, "")}${/[.!?]$/.test(message.trim()) ? "" : "."} Check ${keyVariable}.`;
   }
   return message;
+}
+
+/**
+ * A `fetch` for a provider client that keeps the body of the last error answer as sent, so a
+ * failed call can quote it as it came rather than as the SDK re-serialised it.
+ */
+export function recordingFetch(): { fetch: typeof fetch; lastErrorBody: () => string | undefined } {
+  let last: string | undefined;
+  return {
+    fetch: async (input, init) => {
+      const response = await fetch(input, init);
+      if (!response.ok) last = await response.clone().text().catch(() => undefined);
+      return response;
+    },
+    lastErrorBody: () => last,
+  };
 }
 
 type ScriptedReply = unknown | ((request: LlmRequest) => unknown);

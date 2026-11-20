@@ -3,6 +3,7 @@ stand-in for each API on 127.0.0.1, and the answer is parsed; provider errors re
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Iterator
 from pathlib import Path
@@ -93,3 +94,19 @@ def test_the_dotenv_test_hook_is_honoured_only_for_the_exact_value_1(
     cli.load_env_file(env)
     assert (os.environ.get("EXAMPLES_DOTENV_PROBE") == "loaded") is loaded
     monkeypatch.delenv("EXAMPLES_DOTENV_PROBE", raising=False)
+
+
+ERRORS = json.loads(
+    (Path(__file__).resolve().parents[3] / "offline" / "fixtures" / "llm" / "provider-errors.json").read_text()
+)
+
+
+@pytest.mark.parametrize("provider", list(ENVS))
+@pytest.mark.parametrize("answer", ERRORS["cases"], ids=lambda answer: answer["name"])
+def test_a_provider_error_reads_the_same_in_every_example(
+    provider: str, answer: dict[str, Any], providers: FakeProviders
+) -> None:
+    providers.fault = (answer["status"], answer["raw"], answer["contentType"])
+    with pytest.raises(LlmError) as raised:
+        create_llm_from_env(ENVS[provider]).generate(REQUEST)
+    assert cli.model_error_line(raised.value) == answer["printed"]

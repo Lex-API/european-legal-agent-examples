@@ -66,6 +66,13 @@ export function describeFailure(error: unknown): { lines: string[]; exitCode: nu
   return undefined;
 }
 
+let interrupted = false;
+
+/** After Ctrl-C or a termination signal: a failure it causes while the process exits is not reported. */
+export function markInterrupted(): void {
+  interrupted = true;
+}
+
 /**
  * Run a command line: an expected failure prints its lines on stderr (after the
  * credits line of the calls already charged, when there were any) and sets the
@@ -75,6 +82,7 @@ export async function runCli(body: () => Promise<void>, creditsLine: () => strin
   try {
     await body();
   } catch (error) {
+    if (interrupted) return; // "Interrupted." was printed; the process is exiting
     const failure = describeFailure(error);
     if (!failure) throw error;
     const credits = failure.exitCode === 1 ? creditsLine() : undefined;
