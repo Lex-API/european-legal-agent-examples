@@ -11,7 +11,9 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { LexAPI, WebhookCreateRequest } from "@lexapi/client";
+import { ConfigError, missingSettings, runCli } from "../../../shared/cli.ts";
 import { createLexApiClient, loadEnvFile } from "../../../shared/env.ts";
+import { PrintedError, UnreadableAnswerError, clean, mask } from "../../../shared/lexapi-error.ts";
 import { loadWatchlist, type Watchlist } from "./watchlist.ts";
 
 /** One webhook: the watched acts as a watch list, plus the first topic as `documents.new` criteria. */
@@ -26,28 +28,103 @@ export function webhookRequest(watchlist: Watchlist, url: string): WebhookCreate
   };
 }
 
-export async function setUpWebhook(client: LexAPI, watchlist: Watchlist, url: string): Promise<{ id: string; secret: string | undefined; test: string }> {
+export interface CreatedWebhook {
+  id: string;
+  secret: string | undefined;
+}
+
+/** Said on stderr when the webhook exists but its test delivery could not be made. */
+export function createdButNotTested(id: string): string {
+  return (
+    `The webhook ${id} was created, but its test delivery failed. ` +
+    `Re-test it with client.webhooks.test("${id}") (POST /webhooks/${id}/test), ` +
+    `or remove it with client.webhooks.delete("${id}") (DELETE /webhooks/${id}) before running this again.`
+  );
+}
+
+/**
+ * A test delivery whose result is not a success, with the delivery's own status and message.
+ * When the answer's fields disagree (`success` not true, but the status says SUCCESS), it says
+ * the delivery is not confirmed and shows both, rather than "SUCCESS".
+ */
+export function deliveryFailed(
+  success: unknown,
+  delivery: { status?: unknown; responseStatus?: unknown; errorMessage?: unknown } | undefined,
+): string {
+  const status = clean(delivery?.status, 200) ?? "unknown";
+  const httpCode = typeof delivery?.responseStatus === "number" ? delivery.responseStatus : undefined;
+  const message = clean(delivery?.errorMessage, 300);
+  if (status.toUpperCase() === "SUCCESS" || status === "unknown") {
+    const said = success === undefined ? "missing" : (clean(String(success), 200) ?? "missing");
+    const http = httpCode === undefined ? "" : `, HTTP ${httpCode}`;
+    return mask(`Test delivery: not confirmed (success: ${said}, status: ${status}${http})${message ? ` - ${message}` : ""}`);
+  }
+  return mask(`Test delivery: ${status}${httpCode === undefined ? "" : ` (HTTP ${httpCode})`}${message ? ` - ${message}` : ""}`);
+}
+
+/**
+ * Create the webhook, report it through `onCreated` at once (its secret is shown only
+ * in this answer), then send a test delivery. A failed test - the call refused, or a
+ * delivery that did not succeed - leaves the webhook in place and is an error.
+ */
+export async function setUpWebhook(
+  client: LexAPI,
+  watchlist: Watchlist,
+  url: string,
+  onCreated: (webhook: CreatedWebhook) => void = () => {},
+  onUnidentified: (answer: unknown) => void = () => {},
+): Promise<CreatedWebhook & { test: string }> {
   const created = await client.webhooks.create(webhookRequest(watchlist, url));
-  const test = await client.webhooks.test(created.webhook.id);
+  const id: unknown = created?.webhook?.id;
+  if (typeof id !== "string" || !id) {
+    onUnidentified(created);
+    throw new PrintedError(
+      "LexAPI error INVALID_RESPONSE: The answer to the create has no webhook id, so a webhook may have been created. " +
+        "List your webhooks with client.webhooks.list() (GET /webhooks) before running this again.",
+    );
+  }
+  const webhook = { id, secret: typeof created.webhook.secret === "string" ? created.webhook.secret : undefined };
+  onCreated(webhook);
+  let test: Awaited<ReturnType<LexAPI["webhooks"]["test"]>>;
+  try {
+    test = await client.webhooks.test(id);
+    if (!test?.delivery || typeof test.delivery !== "object") throw new UnreadableAnswerError(200);
+    // Success, as the SDK types it: `success: true` and a delivery with status SUCCESS.
+    if (test.success !== true || String(test.delivery.status).toUpperCase() !== "SUCCESS") throw new PrintedError(deliveryFailed(test.success, test.delivery));
+  } catch (error) {
+    console.error(createdButNotTested(id));
+    throw error;
+  }
+  const delivery = test.delivery;
   return {
-    id: created.webhook.id,
-    secret: created.webhook.secret,
-    test: `${test.delivery.status ?? "unknown"}${test.delivery.responseStatus ? ` (HTTP ${test.delivery.responseStatus})` : ""}${test.delivery.errorMessage ? ` - ${test.delivery.errorMessage}` : ""}`,
+    ...webhook,
+    test: `${delivery.status}${delivery.responseStatus ? ` (HTTP ${delivery.responseStatus})` : ""}`,
   };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const here = join(dirname(fileURLToPath(import.meta.url)), "..");
-  loadEnvFile(join(here, ".env"));
-  const url = process.env.LEXAPI_WEBHOOK_URL;
-  if (!url) {
-    console.error("Set LEXAPI_WEBHOOK_URL to the public HTTPS URL of your receiver.");
-    process.exit(2);
-  }
-  const ownList = join(here, "watchlist.json");
-  const watchlist = loadWatchlist(existsSync(ownList) ? ownList : join(here, "watchlist.example.json"));
-  const result = await setUpWebhook(createLexApiClient(), watchlist, url);
-  console.log(`Webhook ${result.id} created.`);
-  console.log(`Test delivery: ${result.test}`);
-  console.log(`\nSecret (shown once - store it as LEXAPI_WEBHOOK_SECRET, never commit it):\n${result.secret ?? "(not returned)"}`);
+  await runCli(async () => {
+    const here = join(dirname(fileURLToPath(import.meta.url)), "..");
+    loadEnvFile(join(here, ".env"));
+    const url = process.env.LEXAPI_WEBHOOK_URL?.trim();
+    const missing = missingSettings(process.env, { lexapi: true, model: false });
+    if (!url) missing.push("LEXAPI_WEBHOOK_URL is not set. Set it to the public HTTPS URL of your receiver.");
+    if (missing.length > 0) throw new ConfigError(missing.join("\n"));
+    const ownList = join(here, "watchlist.json");
+    const watchlist = loadWatchlist(existsSync(ownList) ? ownList : join(here, "watchlist.example.json"));
+    const result = await setUpWebhook(
+      createLexApiClient(),
+      watchlist,
+      url as string,
+      (webhook) => {
+        console.log(`Webhook ${webhook.id} created.`);
+        console.log(`\nSecret (shown once - store it as LEXAPI_WEBHOOK_SECRET, never commit it):\n${webhook.secret ?? "(not returned)"}\n`);
+      },
+      (answer) => {
+        // Whatever came back, the secret included: it may belong to a webhook that now exists.
+        console.log(`The answer to the create (its body and the SDK's response metadata, API keys masked):\n${mask(JSON.stringify(answer, null, 2) ?? String(answer))}`);
+      },
+    );
+    console.log(`Test delivery: ${result.test}`);
+  });
 }

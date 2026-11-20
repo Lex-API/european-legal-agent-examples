@@ -3,6 +3,8 @@
 Watches a list of EU acts and topics for new or changed documents and writes a cited digest.
 Polling is the default and works on every plan; webhook mode is included for paid plans.
 
+Node.js 20.12 or later. The model is Anthropic's (default) or OpenAI's, through their SDKs.
+
 ## What it does not do
 
 - It does not read the documents it lists. The digest is built from the records LexAPI returns
@@ -17,7 +19,10 @@ Copy `watchlist.example.json` to `watchlist.json` (git-ignored) and edit it:
 
 - `acts` - base-act CELEX numbers to watch, with a label.
 - `topics` - each has a `name` and a `query` (keyword search) and/or one `documentType`.
-- `days` - look-back window for topics.
+- `days` - look-back window for topics, a whole number of days from 1 to 365 (default 7). The API
+  reference sets no maximum; this example caps the window at a year.
+
+A CELEX number listed twice (in any case or spacing) is polled once, with one note on stderr.
 
 ## Polling mode (default)
 
@@ -40,6 +45,45 @@ npm run monitor                  # for real, with your own keys; schedule it wit
 ```
 
 Polling does not detect new consolidated versions; webhook watch lists do.
+
+### When a run fails
+
+Nothing is printed on stdout; stderr gets one line per problem:
+
+- **LexAPI refused a request** (for example 401, a key it does not accept; 402, credits exhausted;
+  403, payment past due; 429, a rate limit or an exhausted quota): the line the LexAPI adapters
+  for LangChain and LlamaIndex print, `LexAPI error <code> (HTTP <status>): <message>.`, followed,
+  when the error carries them, by when the credits or the quota reset, when access ended and the
+  billing link (payment past due), and the wait (a rate limit). After any 401 (a key it does not
+  accept) and after credits exhausted, the dashboard link follows on a line of its own. An answer the example cannot read gives
+  `LexAPI error INVALID_RESPONSE (HTTP 200): The answer could not be read.` When earlier calls of
+  the run were charged, their credits line comes first.
+- **The model provider failed**: `Model error: <the provider's message>`, capped at 1,000
+  characters; `Model error: HTTP <status>: <the response text>` when the answer carries no
+  message; after a rejected key (401 or 403) it names the variable to check, never the key.
+- **A key or setting is missing or invalid**: one line naming it, before any request. `LLM_PROVIDER`
+  is trimmed and its case ignored; empty means `anthropic`; any value but `anthropic` or `openai` is
+  a configuration error.
+
+The SDK retries rate limits and gateway or connection errors by itself (up to 3 retries, each wait
+capped at 30 s) and waits up to 95 s for each answer, so a refused or hanging call can take a
+minute and a half or more before its line is printed.
+
+Exit codes: 0 printed; 1 LexAPI or the model failed; 2 a usage or configuration error, found before
+any request.
+
+The state file is written after the digest is printed, through a temporary file next to it and a
+rename, so it is never half-written. A symlinked state path keeps its link: the file it points to is
+written. An existing state file keeps its permissions; a new one is readable by its owner only,
+since it shows what you watch. A run that fails before its digest leaves the file byte for byte as
+it was (a failed first run does not create it). If the state cannot be written (a read-only
+directory, a full disk), the digest is still printed, then one line says the state was not saved,
+so the next run reports the same items again; exit code 1. A state path that is a directory, that
+cannot be checked or read (for example in a directory you cannot search), or whose directory does
+not exist, a state file that is not the JSON the monitor writes, and a watch list of the wrong shape
+each stop the run before any request (exit code 2, one line naming the file). Temporary files a
+killed run left for the same state file are removed at the start of the next run. The monitor is
+meant to run one at a time: two runs at once can each report the same items.
 
 ## The digest and its grounding
 
@@ -86,8 +130,18 @@ LEXAPI_WEBHOOK_SECRET=... npm run monitor:webhook-server   # listens on 127.0.0.
 ```
 
 - `src/webhook-setup.ts` creates one webhook (`webhooks.create`: the acts as `watchCelex`, the
-  first topic as `searchCriteria`), sends a test delivery (`webhooks.test`) and prints the secret
-  once. Webhook criteria match document titles only.
+  first topic as `searchCriteria`) and prints its id and its secret at once (the secret is shown
+  only in that answer), then sends a test delivery (`webhooks.test`). If the test fails - the call
+  is refused, or the delivery does not succeed (for example `FAILED` because the receiver is not
+  running yet), or the answer does not confirm it (then the line reads `Test delivery: not
+  confirmed (...)` with the fields as sent) - the webhook still exists: the script says so on stderr, with the delivery's status
+  and message when there is one, and how to re-test it (`client.webhooks.test(id)`,
+  `POST /webhooks/{id}/test`) or remove it (`client.webhooks.delete(id)`, `DELETE /webhooks/{id}`)
+  before running setup again, and exits with code 1. If the answer to the create has no webhook id,
+  it prints the answer's body and the SDK's response metadata, with any API key masked (it may hold
+  the secret of a webhook that now exists), and says
+  to list your webhooks (`client.webhooks.list()`, `GET /webhooks`) first. Webhook criteria match
+  document titles only.
 - `src/webhook.ts` verifies each delivery with the SDK's `verifyWebhook` over the **raw** request
   body (HMAC-SHA256 with the secret, constant-time comparison, 5-minute replay window), ignores
   deliveries whose `delivery.id` was already handled, and maps the payload to the same items
@@ -119,7 +173,17 @@ and of a summary shaped like Markdown, removal of advice, hostile strings in rec
 payloads, ten well-behaved summaries, "not reported" credits, signature verification (valid,
 tampered, wrong secret, missing, re-serialised body, stale timestamp, empty secret), duplicate
 deliveries and the bound on remembered ids, the HTTP receiver on 127.0.0.1 (200, 401, 405, 413),
-and webhook setup against the stub. Not covered by any test: the live API, real deliveries and a real model.
+webhook setup against the stub, and `test/cli.test.ts`: the command lines run as processes against
+the stub and a local stand-in for the model API (exit code, stdout empty, no stack trace) for each
+refusal (credits exhausted, an exhausted quota, payment past due, a rate limit), the state file
+byte for byte unchanged after a refused later run and not created by a refused first run, an
+unreadable answer, a model-provider error, a malformed state file, missing keys (exit 2, no
+request), and webhook setup refused at the create, refused at the test delivery, with a delivery that FAILED and
+with a create answer without an id; a state file that cannot be written (the digest is printed
+first), a state path that is a directory, in a directory that cannot be searched, or whose
+directory is a file, a symlinked state path, the state file's permissions, the write by rename and
+the removal of a killed run's temporary files, watch lists of the wrong shape (including `days`
+out of range), a CELEX number listed twice, and a test answer whose fields disagree. Not covered by any test: the live API, real deliveries and a real model.
 
 ## Sample output (illustrative)
 

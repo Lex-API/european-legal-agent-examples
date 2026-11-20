@@ -37,6 +37,8 @@ export interface RecordedRequest {
 export interface StubReply {
   status: number;
   body: unknown;
+  /** Response headers that replace or add to the defaults below (for example `retry-after`). */
+  headers?: Record<string, string>;
 }
 
 export interface StubServer {
@@ -47,8 +49,8 @@ export interface StubServer {
 }
 
 export interface StubOptions {
-  /** Checked before `routes.json`; return `undefined` to fall through. */
-  override?: (request: RecordedRequest) => StubReply | undefined;
+  /** Checked before `routes.json`; return `undefined` to fall through, or `"hang"` to never answer. */
+  override?: (request: RecordedRequest) => StubReply | "hang" | undefined;
 }
 
 export async function startStubServer(options: StubOptions = {}): Promise<StubServer> {
@@ -69,7 +71,9 @@ export async function startStubServer(options: StubOptions = {}): Promise<StubSe
       };
       requests.push(recorded);
 
-      const reply = options.override?.(recorded) ?? replyFromRoutes(routes, recorded);
+      const custom = options.override?.(recorded);
+      if (custom === "hang") return; // no answer; the connection is closed with the server
+      const reply = custom ?? replyFromRoutes(routes, recorded);
       res.writeHead(reply.status, {
         "content-type": "application/json",
         // The real API sends these on every /api/v1 response; the SDK reads them.
@@ -77,6 +81,7 @@ export async function startStubServer(options: StubOptions = {}): Promise<StubSe
         "ratelimit-limit": "15",
         "ratelimit-remaining": "14",
         "ratelimit-reset": "60",
+        ...reply.headers,
       });
       res.end(typeof reply.body === "string" ? reply.body : JSON.stringify(reply.body));
     });
@@ -87,7 +92,11 @@ export async function startStubServer(options: StubOptions = {}): Promise<StubSe
   return {
     baseUrl: `http://127.0.0.1:${port}`,
     requests,
-    close: () => new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve()))),
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        server.close((err) => (err ? reject(err) : resolve()));
+        server.closeAllConnections();
+      }),
   };
 }
 

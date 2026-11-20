@@ -5,7 +5,17 @@ import type OpenAI from "openai";
 import "../offline/test-harness.ts";
 import { AnthropicLlm, DEFAULT_ANTHROPIC_MODEL } from "./llm-anthropic.ts";
 import { OpenAiLlm } from "./llm-openai.ts";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { startFakeModel, type ModelFault } from "../offline/process-harness.ts";
+import { readFixture } from "../offline/stub-server.ts";
+import { describeFailure } from "./cli.ts";
+import { blockExternalFetch } from "../offline/guard.ts";
+import { TEST_IGNORE_DOTENV, loadEnvFile } from "./env.ts";
 import { LlmError, ScriptedLlm, createLlmFromEnv, type LlmRequest } from "./llm.ts";
+
+blockExternalFetch(); // the real clients below may reach 127.0.0.1 only
 
 const request: LlmRequest = {
   system: "system",
@@ -96,4 +106,88 @@ test("OpenAiLlm forces the function call and parses its arguments", async () => 
 test("createLlmFromEnv requires an explicit OpenAI model and rejects unknown providers", async () => {
   await assert.rejects(createLlmFromEnv({ LLM_PROVIDER: "openai" }), /OPENAI_MODEL/);
   await assert.rejects(createLlmFromEnv({ LLM_PROVIDER: "other" }), /Unknown LLM_PROVIDER/);
+});
+
+// ── the real provider clients, against a local stand-in on 127.0.0.1 ───
+
+async function withFake<T>(fail: ModelFault | undefined, run: (baseUrl: string) => Promise<T>): Promise<T> {
+  const fake = await startFakeModel("ai-act", fail);
+  const saved = { a: process.env.ANTHROPIC_BASE_URL, o: process.env.OPENAI_BASE_URL };
+  process.env.ANTHROPIC_BASE_URL = fake.baseUrl;
+  process.env.OPENAI_BASE_URL = `${fake.baseUrl}/v1`;
+  try {
+    return await run(fake.baseUrl);
+  } finally {
+    if (saved.a === undefined) delete process.env.ANTHROPIC_BASE_URL;
+    else process.env.ANTHROPIC_BASE_URL = saved.a;
+    if (saved.o === undefined) delete process.env.OPENAI_BASE_URL;
+    else process.env.OPENAI_BASE_URL = saved.o;
+    await fake.close();
+  }
+}
+
+const PLAN_REQUEST: LlmRequest = {
+  system: "s",
+  user: "u",
+  tool: { name: "plan_searches", description: "d", schema: { type: "object", properties: {}, additionalProperties: false } },
+};
+const REAL = {
+  anthropic: { LLM_PROVIDER: "anthropic", ANTHROPIC_API_KEY: "sk-fake-offline-test" },
+  openai: { LLM_PROVIDER: "openai", OPENAI_API_KEY: "sk-fake-offline-test", OPENAI_MODEL: "fake-model" },
+};
+
+for (const [provider, env] of Object.entries(REAL)) {
+  test(`the real ${provider} client sends the request to the stand-in and its answer is parsed`, async () => {
+    await withFake(undefined, async () => {
+      const llm = await createLlmFromEnv(env);
+      const plan = (await llm.generate(PLAN_REQUEST)) as { queries?: unknown };
+      assert.ok(Array.isArray(plan.queries) && plan.queries.length > 0);
+    });
+  });
+
+  const keyVariable = provider === "anthropic" ? "ANTHROPIC_API_KEY" : "OPENAI_API_KEY";
+  test(`${provider}: a rejected key names ${keyVariable}; a page that is not JSON reads "HTTP <status>: <text>"`, async () => {
+    await withFake({ status: 401, message: "invalid x-api-key" }, async () => {
+      const error = await (await createLlmFromEnv(env)).generate(PLAN_REQUEST).then(() => undefined, (thrown: unknown) => thrown);
+      assert.ok(error instanceof LlmError);
+      assert.equal(error.message, `invalid x-api-key. Check ${keyVariable}.`);
+    });
+    await withFake({ status: 400, raw: "<html>bad gateway</html>" }, async () => {
+      const error = await (await createLlmFromEnv(env)).generate(PLAN_REQUEST).then(() => undefined, (thrown: unknown) => thrown);
+      assert.ok(error instanceof LlmError);
+      assert.equal(error.message, "HTTP 400: <html>bad gateway</html>");
+    });
+  });
+}
+
+test("the .env test hook is honoured only for the exact value 1", () => {
+  const folder = mkdtempSync(join(tmpdir(), "dotenv-"));
+  const file = join(folder, ".env");
+  writeFileSync(file, "EXAMPLES_DOTENV_PROBE=loaded\n");
+  try {
+    for (const [value, loaded] of [["1", false], ["0", true], ["", true], ["true", true], [" 1", true]] as const) {
+      delete process.env.EXAMPLES_DOTENV_PROBE;
+      process.env[TEST_IGNORE_DOTENV] = value;
+      loadEnvFile(file);
+      assert.equal(process.env.EXAMPLES_DOTENV_PROBE === "loaded", loaded, JSON.stringify(value));
+    }
+  } finally {
+    delete process.env[TEST_IGNORE_DOTENV];
+    delete process.env.EXAMPLES_DOTENV_PROBE;
+    rmSync(folder, { recursive: true, force: true });
+  }
+});
+
+test("a provider error reads the same in every example: the message, else HTTP <status> and the body as sent", async () => {
+  const { cases } = JSON.parse(readFixture("llm/provider-errors.json")) as {
+    cases: Array<{ name: string; status: number; contentType: string; raw: string; printed: string }>;
+  };
+  for (const [provider, env] of Object.entries(REAL)) {
+    for (const answer of cases) {
+      await withFake({ status: answer.status, raw: answer.raw, contentType: answer.contentType }, async () => {
+        const error = await (await createLlmFromEnv(env)).generate(PLAN_REQUEST).then(() => undefined, (thrown: unknown) => thrown);
+        assert.deepEqual(describeFailure(error)?.lines, [answer.printed], `${provider}, ${answer.name}`);
+      });
+    }
+  }
 });

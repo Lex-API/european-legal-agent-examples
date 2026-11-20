@@ -14,6 +14,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WEBHOOK_SIGNATURE_HEADER, type VerifyWebhookOptions } from "@lexapi/client";
 import { loadEnvFile } from "../../../shared/env.ts";
+import { ConfigError, missingSettings, runCli } from "../../../shared/cli.ts";
 import { createLlmFromEnv, type Llm } from "../../../shared/llm.ts";
 import { buildDigest, type Digest } from "./digest.ts";
 import { loadState, saveState, takeNew, type MonitorState } from "./state.ts";
@@ -78,22 +79,23 @@ export function createReceiver(options: ReceiverOptions): Server {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const here = join(dirname(fileURLToPath(import.meta.url)), "..");
-  loadEnvFile(join(here, ".env"));
-  const secret = process.env.LEXAPI_WEBHOOK_SECRET;
-  if (!secret) {
-    console.error("Set LEXAPI_WEBHOOK_SECRET to the secret printed by `npm run monitor:webhook-setup`.");
-    process.exit(2);
-  }
-  const statePath = join(here, ".monitor-state.json");
-  const port = Number.parseInt(process.env.PORT ?? "8787", 10);
-  const host = process.env.HOST || "127.0.0.1";
-  const server = createReceiver({
-    secret,
-    llm: await createLlmFromEnv(),
-    state: loadState(statePath),
-    onDigest: (digest) => console.log(digest.markdown),
-    onState: (state) => saveState(statePath, state),
+  await runCli(async () => {
+    const here = join(dirname(fileURLToPath(import.meta.url)), "..");
+    loadEnvFile(join(here, ".env"));
+    const secret = process.env.LEXAPI_WEBHOOK_SECRET?.trim();
+    const missing = missingSettings(process.env, { lexapi: false, model: true });
+    if (!secret) missing.unshift("LEXAPI_WEBHOOK_SECRET is not set. Use the secret printed by `npm run monitor:webhook-setup`.");
+    if (missing.length > 0) throw new ConfigError(missing.join("\n"));
+    const statePath = join(here, ".monitor-state.json");
+    const port = Number.parseInt(process.env.PORT ?? "8787", 10);
+    const host = process.env.HOST || "127.0.0.1";
+    const server = createReceiver({
+      secret: secret as string,
+      llm: await createLlmFromEnv(),
+      state: loadState(statePath),
+      onDigest: (digest) => console.log(digest.markdown),
+      onState: (state) => saveState(statePath, state),
+    });
+    server.listen(port, host, () => console.error(`Listening for LexAPI webhook deliveries on ${host}:${port}.`));
   });
-  server.listen(port, host, () => console.error(`Listening for LexAPI webhook deliveries on ${host}:${port}.`));
 }

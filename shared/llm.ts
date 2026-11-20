@@ -37,6 +37,45 @@ export class LlmError extends Error {
   }
 }
 
+/**
+ * The provider's own message for a failed model call: the `error.message` of its error body
+ * when there is one; otherwise `HTTP <status>: <the response body as sent>` for an HTTP error, else the
+ * error's message. After a 401 or 403 it names the variable that holds the key (never the key).
+ * The caller cleans, caps and masks it.
+ */
+export function providerMessage(error: unknown, keyVariable?: string, rawBody?: string): string {
+  const failure = error as { error?: unknown; status?: unknown; message?: unknown };
+  const body = failure?.error;
+  const inner = body && typeof body === "object" ? (body as { error?: { message?: unknown }; message?: unknown }) : undefined;
+  const field = inner?.error?.message ?? inner?.message;
+  const status = typeof failure?.status === "number" ? failure.status : undefined;
+  const text = error instanceof Error ? error.message : String(error);
+  let message: string;
+  if (typeof field === "string" && field.trim()) message = field;
+  else if (status !== undefined) message = `HTTP ${status}: ${rawBody?.trim() || "no message"}`; // the body as sent
+  else message = text;
+  if ((status === 401 || status === 403) && keyVariable) {
+    message = `${message.replace(/[: ]+$/, "")}${/[.!?]$/.test(message.trim()) ? "" : "."} Check ${keyVariable}.`;
+  }
+  return message;
+}
+
+/**
+ * A `fetch` for a provider client that keeps the body of the last error answer as sent, so a
+ * failed call can quote it as it came rather than as the SDK re-serialised it.
+ */
+export function recordingFetch(): { fetch: typeof fetch; lastErrorBody: () => string | undefined } {
+  let last: string | undefined;
+  return {
+    fetch: async (input, init) => {
+      const response = await fetch(input, init);
+      if (!response.ok) last = await response.clone().text().catch(() => undefined);
+      return response;
+    },
+    lastErrorBody: () => last,
+  };
+}
+
 type ScriptedReply = unknown | ((request: LlmRequest) => unknown);
 
 /**
@@ -64,21 +103,27 @@ export class ScriptedLlm implements Llm {
   }
 }
 
+/** `LLM_PROVIDER`, trimmed and lower-cased; empty or unset means the default, `anthropic`. */
+export function llmProvider(env: NodeJS.ProcessEnv = process.env): string {
+  return env.LLM_PROVIDER?.trim().toLowerCase() || "anthropic";
+}
+
 /**
  * Pick the real adapter from the environment:
  *   LLM_PROVIDER=anthropic (default)  ANTHROPIC_API_KEY, ANTHROPIC_MODEL (default claude-sonnet-5-5)
  *   LLM_PROVIDER=openai               OPENAI_API_KEY, OPENAI_MODEL (required)
  */
 export async function createLlmFromEnv(env: NodeJS.ProcessEnv = process.env): Promise<Llm> {
-  const provider = (env.LLM_PROVIDER ?? "anthropic").toLowerCase();
+  const provider = llmProvider(env);
   if (provider === "anthropic") {
     const { AnthropicLlm } = await import("./llm-anthropic.ts");
-    return new AnthropicLlm({ model: env.ANTHROPIC_MODEL });
+    return new AnthropicLlm({ model: env.ANTHROPIC_MODEL?.trim() || undefined, apiKey: env.ANTHROPIC_API_KEY?.trim() || undefined });
   }
   if (provider === "openai") {
-    if (!env.OPENAI_MODEL) throw new LlmError("Set OPENAI_MODEL to the model id to use (there is no default).");
+    const model = env.OPENAI_MODEL?.trim();
+    if (!model) throw new LlmError("Set OPENAI_MODEL to the model id to use (there is no default).");
     const { OpenAiLlm } = await import("./llm-openai.ts");
-    return new OpenAiLlm({ model: env.OPENAI_MODEL });
+    return new OpenAiLlm({ model, apiKey: env.OPENAI_API_KEY?.trim() || undefined });
   }
   throw new LlmError(`Unknown LLM_PROVIDER "${provider}" (use "anthropic" or "openai").`);
 }

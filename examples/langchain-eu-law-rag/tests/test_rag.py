@@ -20,7 +20,7 @@ from dora_rag import cli, offline, rag
 QUESTION = "What does the act say about reviewing the framework?"
 AS_OF = "2025-01-17"
 ANSWER = "The first passage describes a placeholder review [1]. The second lists placeholder elements [2]."
-DASHBOARD = " Dashboard: https://lex-api.com/dashboard?ref=github-examples"
+DASHBOARD = "\nDashboard: https://lex-api.com/dashboard?ref=github-examples"  # a line of its own
 ANSWER_AS_OF = "The first passage describes a placeholder review [1]. There is no text of the second for the date [2]."
 
 
@@ -450,7 +450,10 @@ def test_a_model_provider_error_exits_1_without_a_traceback(
     assert out == ""
     lines = err.strip().splitlines()
     assert lines[0] == "LexAPI credits used for this run: 5. Credits remaining: 495."
-    assert len(lines) == 2 and lines[1].startswith("The model provider returned an error (")
+    expected = "Connection error." if kind == "connection" else f"placeholder {kind}"
+    if kind == "auth":
+        expected += ". Check ANTHROPIC_API_KEY."  # the variable that holds the key, never the key
+    assert lines[1:] == [f"Model error: {expected}"]  # the provider's message, not the error's repr
     assert "Traceback" not in err and "\x1b" not in err and TEST_KEY not in err
 
 
@@ -458,7 +461,7 @@ def test_any_other_model_failure_exits_1_without_a_traceback(stub: Stub, capsys:
     model = FailingModel(messages=iter([]), error=ValueError("placeholder failure"))
     code, out, err = run(stub, model, capsys=capsys)
     assert code == 1
-    assert err.strip().splitlines()[1] == "The model call failed (ValueError): placeholder failure"
+    assert err.strip().splitlines()[1] == "Model error: placeholder failure"
 
 
 # ── LexAPI errors, configuration and the key ────────────────────────────
@@ -489,6 +492,14 @@ CREDITS_EXHAUSTED_WITH_RESET = {
     },
     "resetsAt": "2026-07-01T00:00:00Z",
 }
+PAYMENT_PAST_DUE_WITH_END = {**PAYMENT_PAST_DUE, "accessEndedAt": "2026-06-20T00:00:00Z"}
+QUOTA_EXHAUSTED = {
+    "success": False,
+    "code": "QUOTA_EXHAUSTED",
+    "error": "Daily quota exceeded",
+    "message": "The daily call quota of this plan is used up.",
+    "usage": {"resetsAt": "2026-07-01T00:00:00Z"},
+}
 
 
 @pytest.mark.parametrize(
@@ -511,9 +522,22 @@ CREDITS_EXHAUSTED_WITH_RESET = {
             "LexAPI error PAYMENT_PAST_DUE (HTTP 403): Payment past due: Your subscription payment"
             " failed, so API requests are refused. Billing: https://lex-api.com/dashboard#billing\n",
         ),
+        (
+            403,
+            PAYMENT_PAST_DUE_WITH_END,
+            "LexAPI error PAYMENT_PAST_DUE (HTTP 403): Payment past due: Your subscription payment"
+            " failed, so API requests are refused. Access ended at 2026-06-20T00:00:00Z."
+            " Billing: https://lex-api.com/dashboard#billing\n",
+        ),
+        (
+            429,
+            QUOTA_EXHAUSTED,
+            "LexAPI error QUOTA_EXHAUSTED (HTTP 429): Daily quota exceeded: The daily call quota of this plan is"
+            " used up. This is an exhausted quota, not a rate limit. Quota resets at 2026-07-01T00:00:00Z.\n",
+        ),
     ],
 )
-def test_402_and_403_print_the_api_message_and_exit_1(
+def test_credits_quota_and_payment_errors_print_the_adapters_text_and_exit_1(
     status: int, body: dict[str, Any], printed: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
     stub = Stub(reply=lambda _body: (status, body))
@@ -522,6 +546,7 @@ def test_402_and_403_print_the_api_message_and_exit_1(
 
     assert code == 1
     assert err == printed
+    assert "upgrade" not in err.lower()
     assert out == ""
     assert model.seen == []
     assert len(stub.requests) == 1  # not retried

@@ -1,8 +1,16 @@
 import { existsSync } from "node:fs";
 import { LexAPI } from "@lexapi/client";
+import { ConfigError, LEXAPI_KEY_MISSING, envKey } from "./cli.ts";
+
+/**
+ * Test hook, not a feature: when set to `1`, the example's `.env` is not read, so a
+ * process test sees only the environment it was given. The test harness sets it.
+ */
+export const TEST_IGNORE_DOTENV = "LEXAPI_EXAMPLES_TEST_IGNORE_DOTENV";
 
 /** Load `KEY=value` lines from a file into `process.env` (existing variables win). */
 export function loadEnvFile(path: string): void {
+  if (process.env[TEST_IGNORE_DOTENV] === "1") return;
   if (existsSync(path)) process.loadEnvFile(path);
 }
 
@@ -12,12 +20,8 @@ export function loadEnvFile(path: string): void {
  *   LEXAPI_BASE_URL  - optional; the tests and `--dry-run` point it at a local stub.
  */
 export function createLexApiClient(env: NodeJS.ProcessEnv = process.env): LexAPI {
-  const apiKey = env.LEXAPI_API_KEY?.trim();
-  if (!apiKey) {
-    throw new Error(
-      "LEXAPI_API_KEY is not set. Create a key at https://lex-api.com/dashboard?ref=github-examples or run with --dry-run.",
-    );
-  }
+  const apiKey = envKey(env, "LEXAPI_API_KEY");
+  if (!apiKey) throw new ConfigError(LEXAPI_KEY_MISSING);
   return new LexAPI({
     apiKey,
     ...(env.LEXAPI_BASE_URL ? { baseUrl: env.LEXAPI_BASE_URL } : {}),
@@ -40,6 +44,11 @@ export class CreditTally {
     this.calls++;
     if (credits === undefined) this.silent++;
     else this.reported += credits;
+  }
+
+  /** How many calls were counted. */
+  get count(): number {
+    return this.calls;
   }
 
   /** The sum of what was reported, or `undefined` when no call reported anything. */

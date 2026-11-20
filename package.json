@@ -15,9 +15,10 @@
     "monitor:webhook-server": "tsx examples/regulatory-change-monitor/src/webhook-server.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test shared/env.test.ts shared/grounding.test.ts shared/llm.test.ts offline/guard.test.ts examples/ai-act-provision-finder/test/agent.test.ts examples/regulatory-change-monitor/test/monitor.test.ts",
+    "test": "node --import tsx --test shared/env.test.ts shared/grounding.test.ts shared/llm.test.ts shared/lexapi-error.test.ts offline/guard.test.ts examples/ai-act-provision-finder/test/agent.test.ts examples/ai-act-provision-finder/test/cli.test.ts examples/regulatory-change-monitor/test/monitor.test.ts examples/regulatory-change-monitor/test/cli.test.ts",
     "record-fixtures": "tsx scripts/record-fixtures.ts"
   },
+  "//": "TODO(release): change @lexapi/client to @lexapi/client@^0.5.0 once 0.5.0 is on npm.",
   "dependencies": {
     "@anthropic-ai/sdk": "1.10.0",
     "@lexapi/client": "0.4.0",

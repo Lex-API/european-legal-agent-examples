@@ -3,11 +3,16 @@
 A minimal retrieval-augmented generation (RAG) example over EU legislation with LangChain.
 
 Ask a question about the Digital Operational Resilience Act (DORA, Regulation (EU) 2022/2554). The
-official LexAPI retriever for LangChain, [`langchain-lexapi`](https://github.com/Lex-API/lexapi-langchain),
+official LexAPI retriever for LangChain, [`langchain-lexapi`](https://github.com/Lex-API/lexapi-langchain) (not public yet),
 fetches matching DORA articles, and a chat model answers from those passages only, citing each claim
 as `[1]`, `[2]`, ... The sources are printed after the answer, one line per passage, with the CELEX
 number, article and EUR-Lex link. It uses `langchain-core` and one chat model integration
 (`langchain-anthropic`); no vector store, no agent loop.
+
+Python 3.11 or later. The model is Anthropic's, through `langchain-anthropic`.
+
+This example installs `langchain-lexapi`, which is not published yet; until it is, the example —
+including `--dry-run` — can only be installed by people with access to that repository.
 
 ## The core
 
@@ -105,10 +110,10 @@ mock LexAPI and a fake model, so it stays in step with the adapter.
 
 `langchain-lexapi` version 0.1.0 is not on PyPI yet. `pyproject.toml` installs it from its
 repository, pinned to a commit, so installing this example needs that repository to be reachable.
-Until it is public, installing needs GitHub access to that repository (for example `gh auth login`).
+If you have access to that repository, `pip` uses your usual GitHub credentials for it.
 
 ```
-langchain-lexapi @ git+https://github.com/Lex-API/lexapi-langchain@1680bc3e643d601eee36ba811d3d24c1ab0aa6d3
+langchain-lexapi @ git+https://github.com/Lex-API/lexapi-langchain@77b1befd49e361a07a5b522aff3c00fd6d98ebfe
 ```
 
 ## Run it
@@ -143,16 +148,26 @@ Exit codes:
 
 - 0: an answer, or "no passages" / "no text", was printed.
 - 1: LexAPI refused the request (for example 401, a key it does not accept; 402, credits
-  exhausted; or 403, payment past due), no answer arrived, or its answer could not be read. One
-  line is printed, in the adapter's form `LexAPI error <code> (HTTP <status>): <message>` (without
-  `(HTTP <status>)` when no answer arrived, for example a connection error), followed on the same
-  line by the billing link, when the credits reset or how long to wait, when the API gives them, and
-  by the dashboard link after a key or credits error. Also when the model call failed or its reply
-  was not used; then the credits line of the search, which was charged, is printed first.
+  exhausted; 403, payment past due; or 429, a rate limit or an exhausted quota), no answer arrived,
+  or its answer could not be read. The adapter's own error text is printed, on one line (from
+  `langchain_lexapi.tools.tool_error`, the text its tools raise):
+  `LexAPI error <code> (HTTP <status>): <message>.` (without `(HTTP <status>)` when no answer
+  arrived, for example a connection error), then, each only when it applies and in this order,
+  `Credits reset at <time>.`, `This is an exhausted quota, not a rate limit.` (and
+  `Quota resets at <time>.`), `Access ended at <time>.`, `Billing: <link>` and
+  `Retry after <n> s.` (only for an error LexAPI's client retries, such as a rate limit). After any
+  401 (a key it does not accept) and after credits exhausted, the example adds the dashboard link on
+  a line of its own. Also when the
+  model call failed (`Model error: <the provider's message>`, capped at 1,000 characters) or its
+  reply was not used; then the credits line of the search, which was charged, is printed first.
+  The LexAPI SDK retries rate limits and gateway or connection errors by itself (up to 3 retries,
+  each wait capped at 30 s) and waits up to 95 s for each answer, so a refused or hanging call can
+  take a minute and a half or more before its line is printed.
 - 2: a usage or configuration error, before any request: an empty question, a date that is
   malformed, not a calendar date, in the future (UTC) or before 1952-01-01, a missing, empty or
   placeholder `LEXAPI_API_KEY` or `ANTHROPIC_API_KEY`, or `--dry-run` without the repository's
   fixtures.
+- 130: interrupted (Ctrl-C), without a traceback.
 
 ## Cost
 
@@ -178,9 +193,11 @@ content. Covered: the request sent (query, `limit`, `include`, `asOf`), `--as-of
 validation, every Source line in the prompt and no text of a withheld passage or of another act,
 the prompt's rules, the source list against the passages, the withheld, reason, left-out and
 credits lines (and "not reported"), no model call when no passage has text, the citation check,
-unusable replies and model-provider errors, 401/402/403/429 and unreadable answers, sanitised output,
+the real `ChatAnthropic` sending its request to a local stand-in for the Anthropic API (and its
+errors), unusable replies and model-provider errors, 401/402/403/429 (credits, quota, payment past due and rate
+limit, each with its exact line) and unreadable answers, sanitised output,
 the API key never printed, `.env` reading and an unfilled copy of `.env.example`, "today" in UTC
-whatever the local time zone, the dashboard link after a key or credits error, the model settings,
+whatever the local time zone, the dashboard link after any 401 and after credits exhausted, the model settings,
 the client closed after the run, the dry run, the snippet in "The core", the sample output below,
 and the output lines shared with the LlamaIndex example.
 Not covered by any test: the live API and a real model.

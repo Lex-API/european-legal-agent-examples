@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { LlmError, type Llm, type LlmRequest } from "./llm.ts";
+import { LlmError, providerMessage, recordingFetch, type Llm, type LlmRequest } from "./llm.ts";
 
 export const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5-5";
 
@@ -15,10 +15,13 @@ export class AnthropicLlm implements Llm {
   readonly label: string;
   private readonly client: Anthropic;
   private readonly model: string;
+  /** Keeps the body of the last error answer, as sent. */
+  private readonly recorder = recordingFetch();
 
-  constructor(options: { model?: string; client?: Anthropic } = {}) {
+  constructor(options: { model?: string; client?: Anthropic; apiKey?: string } = {}) {
     this.model = options.model || DEFAULT_ANTHROPIC_MODEL;
-    this.client = options.client ?? new Anthropic(); // reads ANTHROPIC_API_KEY
+    // Without an apiKey, the SDK reads ANTHROPIC_API_KEY itself.
+    this.client = options.client ?? new Anthropic({ ...(options.apiKey ? { apiKey: options.apiKey } : {}), fetch: this.recorder.fetch });
     this.label = `anthropic:${this.model}`;
   }
 
@@ -28,20 +31,24 @@ export class AnthropicLlm implements Llm {
     ];
 
     for (let attempt = 0; attempt < 2; attempt++) {
-      const response = await this.client.messages.create({
-        model: this.model,
-        max_tokens: 16000,
-        system: request.system,
-        tools: [
-          {
-            name: request.tool.name,
-            description: request.tool.description,
-            input_schema: request.tool.schema as Anthropic.Tool.InputSchema,
-            strict: true,
-          },
-        ],
-        messages,
-      });
+      const response = await this.client.messages
+        .create({
+          model: this.model,
+          max_tokens: 16000,
+          system: request.system,
+          tools: [
+            {
+              name: request.tool.name,
+              description: request.tool.description,
+              input_schema: request.tool.schema as Anthropic.Tool.InputSchema,
+              strict: true,
+            },
+          ],
+          messages,
+      })
+        .catch((error: unknown) => {
+          throw new LlmError(providerMessage(error, "ANTHROPIC_API_KEY", this.recorder.lastErrorBody())); // the provider refused or could not be reached
+        });
 
       if (response.stop_reason === "refusal") {
         throw new LlmError("The model declined this request (stop_reason: refusal).");

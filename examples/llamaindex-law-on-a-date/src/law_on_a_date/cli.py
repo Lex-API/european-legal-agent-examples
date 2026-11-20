@@ -17,9 +17,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, TextIO
 
-import anthropic
 import httpx
-from lexapi import CreditsExhaustedError, LexAPI, LexAPIError, PaymentPastDueError
+from lexapi import LexAPI, LexAPIError
 from lexapi.passages import Passage, format_citation
 from llama_index.core.llms import LLM
 from llama_index.core.schema import NodeWithScore
@@ -72,7 +71,7 @@ PLACEHOLDERS = frozenset({"lex_your_key_here"})  # the key values this repositor
 _DASHBOARD_CODES = frozenset({"UNAUTHORIZED", "INVALID_API_KEY", "CREDITS_EXHAUSTED"})
 KEY_HELP = {
     "LEXAPI_API_KEY": f"Create a key at {DASHBOARD_URL} or use --dry-run.",
-    "ANTHROPIC_API_KEY": "Add it to .env or use --dry-run.",
+    "ANTHROPIC_API_KEY": "Add an Anthropic API key to .env or use --dry-run.",
 }
 _ACT_CELEX = re.compile(r"^3\d{4}[RLD]\d{4}$")
 
@@ -319,75 +318,84 @@ def create_llm() -> tuple[LLM, str]:
     return Anthropic(model=name, max_tokens=2000, api_key=env_key("ANTHROPIC_API_KEY")), f"anthropic:{name}"
 
 
-def one_line(text: str, *, keep: str = "") -> str:
-    """Error text on one line, without control characters or any key from the environment.
+def tidy(text: str) -> str:
+    """Text on one line, without control characters or any key from the environment."""
+    for name in ("ANTHROPIC_API_KEY", "LEXAPI_API_KEY"):
+        if secret := os.environ.get(name, "").strip():
+            text = text.replace(secret, "[key]")
+    return " ".join(clean(text).split())
 
-    Text over 300 characters is cut; ``keep`` (a link) follows it in full.
+
+def one_line(text: str) -> str:
+    """Error text on one line, without control characters or any key from the environment; cut after 300 characters."""
+    line = tidy(text)
+    return line[:300] + "..." if len(line) > 300 else line
+
+
+def refusal_lines(text: str, code: str, status: int | None) -> str:
+    """The adapter's error text, whole, on its own line; after any 401 or credits exhausted, the dashboard link next.
+
+    The adapters already put the API's strings on one line and cap them, so nothing is cut here.
     """
-
-    def tidy(part: str) -> str:
-        for name in ("ANTHROPIC_API_KEY", "LEXAPI_API_KEY"):
-            if secret := os.environ.get(name, "").strip():
-                part = part.replace(secret, "[key]")
-        return " ".join(clean(part).split())
-
-    message, link = tidy(text), tidy(keep)
-    if len(message) > 300:
-        message = message[:300] + "..."
-    return f"{message} {link}" if link else message
-
-
-def error_fields(error: LexAPIError) -> dict[str, Any]:
-    """What the adapters put after the API's message, from the error's own fields."""
-    return {
-        "resets_at": error.resets_at if isinstance(error, CreditsExhaustedError) else None,
-        "billing_url": error.billing_url if isinstance(error, PaymentPastDueError) else None,
-        "retry_after": error.retry_after,
-    }
-
-
-def refusal_line(
-    text: str,
-    code: str,
-    *,
-    resets_at: str | None = None,
-    billing_url: str | None = None,
-    retry_after: float | None = None,
-) -> str:
-    """The adapter's error line on one line; after a key or credits error without a billing link, the dashboard.
-
-    The adapters end the line with what the error's fields say (credits reset time, billing link, retry
-    delay), in that order. A long message is cut; that end and the dashboard link never are.
-    """
-    tail = [
-        f"Credits reset at {resets_at}." if resets_at else "",
-        f"Billing: {billing_url}" if billing_url else "",
-        f"Retry after {retry_after:g} s." if retry_after is not None else "",
-    ]
-    end = "".join(f" {part}" for part in tail if part)
-    message = text[: len(text) - len(end)] if end and text.endswith(end) else text
-    kept = end if message is not text else ""
-    if code in _DASHBOARD_CODES and not billing_url:
-        kept += f" Dashboard: {DASHBOARD_URL}"
-    return one_line(message, keep=kept)
+    lines = [tidy(text)]
+    if status == 401 or code in _DASHBOARD_CODES:
+        lines.append(f"Dashboard: {DASHBOARD_URL}")
+    return "\n".join(lines)
 
 
 def refusal(error: LexAPIToolError | LexAPIError) -> str:
-    """A LexAPI refusal or unreadable answer, in the tools' one-line form for both adapters."""
-    if isinstance(error, LexAPIToolError):  # the tools adapter keeps the code and the retry delay
-        return refusal_line(str(error), error.code, retry_after=error.retry_after)
-    tool_error = LexAPIToolError.from_sdk(error)
-    return refusal_line(str(tool_error), tool_error.code, **error_fields(error))
+    """A LexAPI refusal or unreadable answer: the tools' own text (for both adapters), then the dashboard link where it
+    helps."""
+    tool_error = error if isinstance(error, LexAPIToolError) else LexAPIToolError.from_sdk(error)
+    return refusal_lines(str(tool_error), tool_error.code, tool_error.status)
+
+
+_LEX_KEY = re.compile(r"lex_[A-Za-z0-9_\-]+")
+
+
+def _response_json(error: BaseException | None) -> object:
+    response = getattr(error, "response", None)
+    try:
+        return response.json() if response is not None else None
+    except Exception:  # not JSON, or no body
+        return None
+
+
+def provider_message(error: BaseException | None, key_variable: str | None = None) -> str:
+    """The model provider's own message: the ``error.message`` of its error body where the provider's SDK exposes
+    one (never the body's repr); otherwise ``HTTP <status>: <the response text>`` for an HTTP error, else the
+    error's text. After a 401 or 403 it names the variable that holds the key (never the key)."""
+    message = None
+    for body in (getattr(error, "body", None), _response_json(error)):
+        if isinstance(body, dict):
+            inner = body.get("error")
+            field = inner.get("message") if isinstance(inner, dict) else body.get("message")
+            if isinstance(field, str) and field.strip():
+                message = field
+                break
+    status = getattr(error, "status_code", None)
+    if message is None and isinstance(status, int):
+        response = getattr(error, "response", None)
+        text = getattr(response, "text", "") if response is not None else ""
+        message = f"HTTP {status}: {text.strip() or 'no message'}"
+    message = str(error) if message is None else message
+    if status in (401, 403) and key_variable:
+        message = message.rstrip(": ")
+        message = f"{message}{'' if message.endswith(('.', '!', '?')) else '.'} Check {key_variable}."
+    return message
+
+
+def model_error_line(message: str) -> str:
+    """``Model error: <message>`` on one line, keys masked, cut at 1,000 characters (``…`` marks the cut)."""
+    text = _LEX_KEY.sub("lex_***", tidy(message))
+    return "Model error: " + (text[:1000].rstrip() + "…" if len(text) > 1000 else text)
 
 
 def model_failure(error: AnswerError | ModelCallError) -> str:
-    """One line for a failed model call or an unusable reply."""
+    """One line for a failed model call (the provider's message) or an unusable reply."""
     if isinstance(error, AnswerError):
         return one_line(f"The model's reply was not used: {error}")
-    cause = error.__cause__
-    if isinstance(cause, anthropic.APIError):
-        return one_line(f"The model provider returned an error ({type(cause).__name__}): {cause}")
-    return one_line(f"The model call failed ({type(cause).__name__}): {cause}")
+    return model_error_line(provider_message(error.__cause__, "ANTHROPIC_API_KEY"))
 
 
 def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
@@ -414,7 +422,7 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     return args
 
 
-def main(
+def _main(
     argv: Sequence[str] | None = None,
     *,
     transport: httpx.BaseTransport | None = None,
@@ -503,6 +511,22 @@ def main(
     )
     print(text, file=out)
     return 0
+
+
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    transport: httpx.BaseTransport | None = None,
+    llm: LLM | None = None,
+    out: TextIO | None = None,
+) -> int:
+    """Exit codes: 0 printed; 1 LexAPI refused, or the model call failed; 2 usage or configuration error;
+    130 interrupted (Ctrl-C), without a traceback."""
+    try:
+        return _main(argv, transport=transport, llm=llm, out=out)
+    except KeyboardInterrupt:
+        print("Interrupted.", file=sys.stderr)
+        return 130
 
 
 if __name__ == "__main__":
