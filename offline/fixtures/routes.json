@@ -1,0 +1,17 @@
+[
+  { "method": "GET", "path": "/info", "fixture": "info.json" },
+  { "method": "POST", "path": "/legislation/semantic", "includes": "no-such-topic", "fixture": "legislation-semantic.empty.json" },
+  { "method": "POST", "path": "/legislation/semantic", "includes": "\"asOf\"", "fixture": "legislation-semantic.gdpr-asof.json" },
+  { "method": "POST", "path": "/legislation/semantic", "includes": "transfer", "fixture": "legislation-semantic.gdpr.json" },
+  { "method": "POST", "path": "/legislation/semantic", "fixture": "legislation-semantic.ai-act.json" },
+  { "method": "POST", "path": "/search/semantic", "includes": "no-such-topic", "fixture": "case-law-semantic.empty.json" },
+  { "method": "POST", "path": "/search/semantic", "fixture": "case-law-semantic.gdpr.json" },
+  { "method": "POST", "path": "/documentContent", "includes": "62099CJ9901", "fixture": "document.62099CJ9901.json" },
+  { "method": "POST", "path": "/documentContent", "includes": "62099TO9902", "fixture": "document.text-unavailable.json" },
+  { "method": "GET", "path": "/citations/cited-by/32016R0679", "fixture": "cited-by.32016R0679.json" },
+  { "method": "GET", "path": "/citations/cited-by/32024R1689", "fixture": "cited-by.32024R1689.json" },
+  { "method": "GET", "path": "/documents/recent", "fixture": "recent.regulation.json" },
+  { "method": "POST", "path": "/search", "fixture": "search.artificial-intelligence.json" },
+  { "method": "POST", "path": "/webhooks", "status": 201, "fixture": "webhook-create.json" },
+  { "method": "POST", "path": "/webhooks/wh_fixture_0001/test", "fixture": "webhook-test.json" }
+]

@@ -1,0 +1,39 @@
+{
+  "success": true,
+  "document": "32016R0679",
+  "act": {
+    "celex": "32016R0679",
+    "dateOfDocument": null,
+    "entryIntoForce": null,
+    "endOfValidity": null,
+    "inForceToday": null
+  },
+  "language": "en",
+  "asOf": "2099-06-01",
+  "asOfResolved": true,
+  "asOfVersion": {
+    "celex": "32016R0679",
+    "kind": "as_published",
+    "date": null,
+    "validUntil": null
+  },
+  "provision": {
+    "id": "art_17",
+    "number": "Article 17",
+    "title": "(fixture title)",
+    "text": "[SYNTHETIC FIXTURE - not the text of the act] Placeholder provision G1 (as published): fixture wording about a placeholder request that a placeholder body handles."
+  },
+  "consolidated": false,
+  "provenance": {
+    "sourceUrl": "https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32016R0679"
+  },
+  "credits": {
+    "operation_weight": 4,
+    "current": 4,
+    "limit": 500,
+    "remaining": 496,
+    "included": 500,
+    "topup": 0,
+    "resetsAt": "2026-12-01T00:00:00.000Z"
+  }
+}

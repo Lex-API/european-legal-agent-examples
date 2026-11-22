@@ -1,0 +1,40 @@
+{
+  "success": true,
+  "document": {
+    "celex": "62099TO9902",
+    "language": "en",
+    "title": "Order of the General Court (fixture title)",
+    "documentType": "Order",
+    "documentTypeCode": "order",
+    "author": "General Court",
+    "dateOfDocumentISO": "2099-01-01",
+    "ecli": "ECLI:EU:T:2099:902",
+    "content": null,
+    "textAvailability": {
+      "available": false,
+      "reason": "not_in_language",
+      "retryable": true,
+      "availableLanguages": [
+        "fr",
+        "de"
+      ],
+      "source": "cellar-manifestations",
+      "checkedAt": "2026-11-01T08:00:00.000Z"
+    },
+    "urls": {
+      "metadata": "https://eur-lex.europa.eu/legal-content/EN/ALL/?uri=CELEX:62099TO9902"
+    }
+  },
+  "subscription": {
+    "tier": "FREE"
+  },
+  "credits": {
+    "operation_weight": 5,
+    "current": 20,
+    "limit": 500,
+    "remaining": 480,
+    "included": 500,
+    "topup": 0,
+    "resetsAt": "2026-12-01T00:00:00.000Z"
+  }
+}

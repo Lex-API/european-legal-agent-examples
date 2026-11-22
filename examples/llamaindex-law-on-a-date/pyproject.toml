@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling==1.33.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "llamaindex-law-on-a-date"
+version = "0.0.0"
+description = "Example: EU law for a date, answered from cited passages, with LlamaIndex and LexAPI."
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = [
+  "llama-index-retrievers-lexapi>=0.1.0,<0.2",
+  "llama-index-tools-lexapi>=0.1.0,<0.2",
+  "llama-index-core==0.14.26",
+  "llama-index-llms-anthropic==0.13.0",
+  # llama-index-llms-anthropic 0.13.0 (its latest release) builds its requests with types that
+  # anthropic 2.x turned into unions ("Cannot instantiate typing.Union"); 1.17.0 is the newest that works.
+  "anthropic==1.17.0",
+  # llama-index-llms-anthropic needs cryptography (through anthropic[bedrock,vertex]); from 49.0.0 it
+  # ships macOS wheels for arm64 only, so Intel Macs would have to build it from source.
+  "cryptography<49; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.2.0", "ruff==0.17.5", "mypy==2.4.1"]
+
+[project.scripts]
+law-on-a-date = "law_on_a_date.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/law_on_a_date"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src", "tests"]
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

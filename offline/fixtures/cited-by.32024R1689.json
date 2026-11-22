@@ -1,0 +1,14 @@
+{
+  "success": true,
+  "targetDocument": "32024R1689",
+  "totalCitations": 0,
+  "totalEdges": 0,
+  "countsSource": "counted",
+  "uniqueDocuments": 0,
+  "limit": 100,
+  "offset": 0,
+  "citedBy": [],
+  "relationSync": { "source": "cellar", "status": "pending", "syncedAt": null },
+  "subscription": { "tier": "FREE" },
+  "credits": { "operation_weight": 1, "current": 2, "limit": 500, "remaining": 498, "included": 500, "topup": 0, "resetsAt": "2026-12-01T00:00:00.000Z" }
+}

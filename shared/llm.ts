@@ -1,0 +1,129 @@
+/**
+ * The model call, behind one small interface.
+ *
+ * Every model call in these examples asks for ONE structured object: the
+ * model is given a tool whose input schema is the object we want, and the
+ * adapter returns that tool input. Nothing else the model writes is used.
+ *
+ *   - `ScriptedLlm`  - deterministic, no network. Used by the tests and by `--dry-run`.
+ *   - `AnthropicLlm` - Anthropic Messages API with tool use (`llm-anthropic.ts`).
+ *   - `OpenAiLlm`    - OpenAI Chat Completions with function calling (`llm-openai.ts`).
+ */
+
+export interface LlmTool {
+  name: string;
+  description: string;
+  /** JSON Schema of the object the model must return (strict: every property required, no extras). */
+  schema: Record<string, unknown>;
+}
+
+export interface LlmRequest {
+  system: string;
+  user: string;
+  tool: LlmTool;
+}
+
+export interface Llm {
+  /** Human-readable label for logs, e.g. `anthropic:claude-sonnet-5-5`. */
+  readonly label: string;
+  /** Returns the tool input object produced by the model (unvalidated - callers parse it). */
+  generate(request: LlmRequest): Promise<unknown>;
+}
+
+export class LlmError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LlmError";
+  }
+}
+
+/**
+ * The provider's own message for a failed model call: the `error.message` of its error body
+ * when there is one; otherwise `HTTP <status>: <the response body as sent>` for an HTTP error, else the
+ * error's message. After a 401 or 403 it names the variable that holds the key (never the key).
+ * The caller cleans, caps and masks it.
+ */
+export function providerMessage(error: unknown, keyVariable?: string, rawBody?: string): string {
+  const failure = error as { error?: unknown; status?: unknown; message?: unknown };
+  const body = failure?.error;
+  const inner = body && typeof body === "object" ? (body as { error?: { message?: unknown }; message?: unknown }) : undefined;
+  const field = inner?.error?.message ?? inner?.message;
+  const status = typeof failure?.status === "number" ? failure.status : undefined;
+  const text = error instanceof Error ? error.message : String(error);
+  let message: string;
+  if (typeof field === "string" && field.trim()) message = field;
+  else if (status !== undefined) message = `HTTP ${status}: ${rawBody?.trim() || "no message"}`; // the body as sent
+  else message = text;
+  if ((status === 401 || status === 403) && keyVariable) {
+    message = `${message.replace(/[: ]+$/, "")}${/[.!?]$/.test(message.trim()) ? "" : "."} Check ${keyVariable}.`;
+  }
+  return message;
+}
+
+/**
+ * A `fetch` for a provider client that keeps the body of the last error answer as sent, so a
+ * failed call can quote it as it came rather than as the SDK re-serialised it.
+ */
+export function recordingFetch(): { fetch: typeof fetch; lastErrorBody: () => string | undefined } {
+  let last: string | undefined;
+  return {
+    fetch: async (input, init) => {
+      const response = await fetch(input, init);
+      if (!response.ok) last = await response.clone().text().catch(() => undefined);
+      return response;
+    },
+    lastErrorBody: () => last,
+  };
+}
+
+type ScriptedReply = unknown | ((request: LlmRequest) => unknown);
+
+/**
+ * A fake model: replies are looked up by tool name. A list is consumed one
+ * reply per call (the last one repeats), so a test can script "bad draft,
+ * then good draft".
+ */
+export class ScriptedLlm implements Llm {
+  readonly label = "scripted (no model was called)";
+  readonly calls: LlmRequest[] = [];
+  private readonly replies: Map<string, ScriptedReply[]>;
+
+  constructor(replies: Record<string, ScriptedReply | ScriptedReply[]>) {
+    this.replies = new Map(
+      Object.entries(replies).map(([tool, reply]) => [tool, Array.isArray(reply) ? [...reply] : [reply]]),
+    );
+  }
+
+  async generate(request: LlmRequest): Promise<unknown> {
+    this.calls.push(request);
+    const queue = this.replies.get(request.tool.name);
+    if (!queue || queue.length === 0) throw new LlmError(`ScriptedLlm has no reply for tool "${request.tool.name}"`);
+    const reply = queue.length > 1 ? queue.shift() : queue[0];
+    return typeof reply === "function" ? (reply as (r: LlmRequest) => unknown)(request) : structuredClone(reply);
+  }
+}
+
+/** `LLM_PROVIDER`, trimmed and lower-cased; empty or unset means the default, `anthropic`. */
+export function llmProvider(env: NodeJS.ProcessEnv = process.env): string {
+  return env.LLM_PROVIDER?.trim().toLowerCase() || "anthropic";
+}
+
+/**
+ * Pick the real adapter from the environment:
+ *   LLM_PROVIDER=anthropic (default)  ANTHROPIC_API_KEY, ANTHROPIC_MODEL (default claude-sonnet-5-5)
+ *   LLM_PROVIDER=openai               OPENAI_API_KEY, OPENAI_MODEL (required)
+ */
+export async function createLlmFromEnv(env: NodeJS.ProcessEnv = process.env): Promise<Llm> {
+  const provider = llmProvider(env);
+  if (provider === "anthropic") {
+    const { AnthropicLlm } = await import("./llm-anthropic.ts");
+    return new AnthropicLlm({ model: env.ANTHROPIC_MODEL?.trim() || undefined, apiKey: env.ANTHROPIC_API_KEY?.trim() || undefined });
+  }
+  if (provider === "openai") {
+    const model = env.OPENAI_MODEL?.trim();
+    if (!model) throw new LlmError("Set OPENAI_MODEL to the model id to use (there is no default).");
+    const { OpenAiLlm } = await import("./llm-openai.ts");
+    return new OpenAiLlm({ model, apiKey: env.OPENAI_API_KEY?.trim() || undefined });
+  }
+  throw new LlmError(`Unknown LLM_PROVIDER "${provider}" (use "anthropic" or "openai").`);
+}

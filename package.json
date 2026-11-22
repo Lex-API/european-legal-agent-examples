@@ -1,0 +1,36 @@
+{
+  "name": "european-legal-agent-examples",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Runnable example agents that ground their answers in citable EU law using LexAPI.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "ai-act": "tsx examples/ai-act-provision-finder/src/main.ts",
+    "monitor": "tsx examples/regulatory-change-monitor/src/main.ts",
+    "monitor:webhook-setup": "tsx examples/regulatory-change-monitor/src/webhook-setup.ts",
+    "monitor:webhook-server": "tsx examples/regulatory-change-monitor/src/webhook-server.ts",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test shared/env.test.ts shared/grounding.test.ts shared/llm.test.ts shared/lexapi-error.test.ts offline/guard.test.ts examples/ai-act-provision-finder/test/agent.test.ts examples/ai-act-provision-finder/test/cli.test.ts examples/regulatory-change-monitor/test/monitor.test.ts examples/regulatory-change-monitor/test/cli.test.ts",
+    "record-fixtures": "tsx scripts/record-fixtures.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "1.10.0",
+    "@lexapi/client": "^0.5.0",
+    "@lexapi/mcp": "0.6.0",
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "openai": "7.59.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "22.20.5",
+    "eslint": "10.15.0",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.73.0"
+  }
+}

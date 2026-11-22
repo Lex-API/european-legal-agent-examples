@@ -1,0 +1,14 @@
+{
+  "success": true,
+  "message": "Webhook created successfully",
+  "webhook": {
+    "id": "wh_fixture_0001",
+    "name": "Regulatory change monitor",
+    "url": "https://example.com/webhooks/lexapi",
+    "secret": "fixture-secret-not-a-real-secret",
+    "status": "ACTIVE",
+    "searchCriteria": null,
+    "watchCelex": ["32016R0679", "32024R1689"],
+    "createdAt": "2026-11-18T07:00:00.000Z"
+  }
+}

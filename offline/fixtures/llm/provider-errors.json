@@ -1,0 +1,33 @@
+{
+  "_note": "Synthetic error answers of a model provider, sent byte for byte by the local stand-ins; every example prints the same line for each.",
+  "cases": [
+    {
+      "name": "JSON without a message",
+      "status": 400,
+      "contentType": "application/json",
+      "raw": "{\"type\": \"error\",  \"error\": {\"type\": \"overloaded_error\"}}",
+      "printed": "Model error: HTTP 400: {\"type\": \"error\", \"error\": {\"type\": \"overloaded_error\"}}"
+    },
+    {
+      "name": "an HTML page",
+      "status": 400,
+      "contentType": "text/html",
+      "raw": "<html>\n  <body>bad gateway</body>\n</html>",
+      "printed": "Model error: HTTP 400: <html> <body>bad gateway</body> </html>"
+    },
+    {
+      "name": "an empty body",
+      "status": 400,
+      "contentType": "text/plain",
+      "raw": "",
+      "printed": "Model error: HTTP 400: no message"
+    },
+    {
+      "name": "JSON with a message",
+      "status": 400,
+      "contentType": "application/json",
+      "raw": "{\"type\": \"error\", \"error\": {\"type\": \"invalid_request_error\", \"message\": \"prompt is too long\"}}",
+      "printed": "Model error: prompt is too long"
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling==1.33.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gdpr-research-assistant"
+version = "0.0.0"
+description = "Example: answer GDPR questions with quotations from the GDPR and CJEU case law, using LexAPI."
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = [
+  "lexapi-client>=0.5.0,<0.6",
+]
+
+[project.optional-dependencies]
+anthropic = ["anthropic==2.10.0"]
+openai = ["openai==3.55.0"]
+dev = ["anthropic==2.10.0", "openai==3.55.0", "pytest==9.2.0", "ruff==0.17.5", "mypy==2.4.1"]
+
+[project.scripts]
+gdpr-assistant = "gdpr_assistant.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gdpr_assistant"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/test_agent.py" = ["E501"]  # long literal drafts
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+files = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,39 @@
+{
+  "success": true,
+  "parameters": { "days": 7, "dateFrom": "2026-11-11", "dateTo": "2026-11-18", "documentType": "regulation", "language": "en", "limit": 10 },
+  "totalResults": 2,
+  "resultCount": 2,
+  "results": [
+    {
+      "title": "Commission Implementing Regulation (EU) 2099/100 on placeholder subject matter (fixture title)",
+      "celexNumber": "32099R0100",
+      "celex": "32099R0100",
+      "form": "Implementing regulation",
+      "documentType": "Implementing regulation",
+      "documentTypeCode": "regulation",
+      "date": "12/11/2026",
+      "dateOfDocument": "12/11/2026",
+      "dateOfDocumentISO": "2026-11-12",
+      "author": "European Commission",
+      "availableLanguages": ["EN", "FR", "DE"],
+      "url": "https://eur-lex.europa.eu/legal-content/EN/ALL/?uri=CELEX:32099R0100"
+    },
+    {
+      "title": "Regulation (EU) 2099/101 of the European Parliament and of the Council on placeholder subject matter (fixture title)",
+      "celexNumber": "32099R0101",
+      "celex": "32099R0101",
+      "form": "Regulation",
+      "documentType": "Regulation",
+      "documentTypeCode": "regulation",
+      "date": "14/11/2026",
+      "dateOfDocument": "14/11/2026",
+      "dateOfDocumentISO": "2026-11-14",
+      "author": "European Parliament, Council of the European Union",
+      "availableLanguages": ["EN", "FR", "DE"],
+      "url": "https://eur-lex.europa.eu/legal-content/EN/ALL/?uri=CELEX:32099R0101"
+    }
+  ],
+  "fetchedAt": "2026-11-18T07:00:00.000Z",
+  "subscription": { "tier": "FREE", "maxPages": 1 },
+  "credits": { "operation_weight": 3, "current": 5, "limit": 500, "remaining": 495, "included": 500, "topup": 0, "resetsAt": "2026-12-01T00:00:00.000Z" }
+}

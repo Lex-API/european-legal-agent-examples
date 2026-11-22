@@ -1,0 +1,82 @@
+{
+  "success": true,
+  "searchType": "semantic-legislation",
+  "query": "fixture",
+  "resultCount": 3,
+  "results": [
+    {
+      "id": "fx-gdpr-date-0001",
+      "law_id": "32016R0679",
+      "law_title": "Regulation (EU) 2016/679 (fixture title)",
+      "article_ref": "art_21",
+      "language": "en",
+      "score": 0.8,
+      "asOf": "2099-06-01",
+      "asOfResolved": true,
+      "asOfVersion": {
+        "celex": "32016R0679",
+        "date": null,
+        "kind": "as_published"
+      },
+      "text": "[SYNTHETIC FIXTURE - not the text of the act] Placeholder provision G2: fixture wording about a placeholder objection to a placeholder activity.",
+      "provenance": {
+        "sourceUrl": "https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32016R0679"
+      }
+    },
+    {
+      "id": "fx-gdpr-date-0002",
+      "law_id": "32016R0679",
+      "law_title": "Regulation (EU) 2016/679 (fixture title)",
+      "article_ref": "art_18",
+      "language": "en",
+      "score": 0.78,
+      "asOf": "2099-06-01",
+      "asOfResolved": false,
+      "asOfReason": "fetch_timeout",
+      "text": "[SYNTHETIC FIXTURE - not the text of the act] UNRESOLVED-LATEST-TEXT-MUST-NOT-REACH-THE-MODEL",
+      "snippet": "[SYNTHETIC FIXTURE - not the text of the act] UNRESOLVED-LATEST-SNIPPET-MUST-NOT-REACH-THE-MODEL",
+      "provenance": {
+        "sourceUrl": "https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32016R0679"
+      }
+    },
+    {
+      "id": "fx-gdpr-date-0003",
+      "law_id": "32099L0009",
+      "law_title": "Directive (EU) 2099/9 (fixture title)",
+      "article_ref": "art_4",
+      "language": "en",
+      "score": 0.76,
+      "asOf": "2099-06-01",
+      "asOfResolved": true,
+      "asOfVersion": {
+        "celex": "32099L0009",
+        "date": null,
+        "kind": "as_published"
+      },
+      "text": "[SYNTHETIC FIXTURE - not the text of the act] OTHER-ACT-TEXT-MUST-NOT-REACH-THE-MODEL",
+      "provenance": {
+        "sourceUrl": "https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32099L0009"
+      }
+    }
+  ],
+  "asOf": "2099-06-01",
+  "asOfSummary": {
+    "liveFetches": 1,
+    "unresolved": 1
+  },
+  "metadata": {},
+  "tookMs": 2100,
+  "subscription": {
+    "tier": "FREE",
+    "maxResults": 10
+  },
+  "credits": {
+    "operation_weight": 5,
+    "current": 9,
+    "limit": 500,
+    "remaining": 491,
+    "included": 500,
+    "topup": 0,
+    "resetsAt": "2026-12-01T00:00:00.000Z"
+  }
+}

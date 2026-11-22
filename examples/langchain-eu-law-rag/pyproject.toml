@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling==1.33.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "langchain-eu-law-rag"
+version = "0.0.0"
+description = "Example: answer questions about DORA from cited passages, with LangChain and LexAPI."
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = [
+  "langchain-lexapi>=0.1.0,<0.2",
+  "langchain-core==1.8.3",
+  "langchain-anthropic==1.7.11",
+  "anthropic==2.10.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.2.0", "ruff==0.17.5", "mypy==2.4.1"]
+
+[project.scripts]
+dora-rag = "dora_rag.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dora_rag"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src", "tests"]
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
