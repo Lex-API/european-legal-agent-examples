@@ -34,10 +34,7 @@ npm run ai-act -- --dry-run "A SaaS tool that ranks job applicants' CVs and chat
 npm run monitor -- --dry-run
 ```
 
-The AI Act provision finder, the regulatory change monitor (above) and the GDPR research assistant
-(its own setup; see its README) work this way for everyone today. The LangChain and LlamaIndex
-examples install LexAPI adapter packages that are not published yet, so until they are, only people
-with access to those repositories can install them, `--dry-run` included.
+The three Python examples work the same way, each with its own setup; see its README.
 
 ## Run one for real
 
@@ -151,17 +148,15 @@ figures. The script refuses to run without the flag, inside a test run, or on a 
 
 ## Versions
 
-- AI Act provision finder: `@lexapi/client` 0.4.0 and `@lexapi/mcp` 0.5.1 (npm).
-- Regulatory change monitor: `@lexapi/client` 0.4.0 (npm).
-- GDPR research assistant: `lexapi-client` from its repository at commit `e48dfda`, until 0.5.0 is
-  on PyPI. That commit still reports its version as 0.4.0.
-- DORA questions (LangChain): `langchain-lexapi` 0.1.0 from its repository at commit `77b1bef` (not
-  published yet; it brings `lexapi-client` at the same commit `e48dfda`), `langchain-core` 1.8.3 and
-  `langchain-anthropic` 1.7.11.
+- AI Act provision finder: `@lexapi/client` 0.5 and `@lexapi/mcp` 0.6.0 (npm).
+- Regulatory change monitor: `@lexapi/client` 0.5 (npm).
+- GDPR research assistant: `lexapi-client` 0.5 (PyPI).
+- DORA questions (LangChain): `langchain-lexapi` 0.1 (PyPI; it brings `lexapi-client` 0.5),
+  `langchain-core` 1.8.3 and `langchain-anthropic` 1.7.11.
 - EU law for a date (LlamaIndex): `llama-index-retrievers-lexapi` and `llama-index-tools-lexapi`
-  0.1.0 from their repository at commit `8e0bbb9` (not published yet; they bring `lexapi-client` at
-  the same commit `e48dfda`), `llama-index-core` 0.14.26, `llama-index-llms-anthropic` 0.13.0 and
-  `anthropic` 1.17.0 (`llama-index-llms-anthropic` 0.13.0 does not work with `anthropic` 2.x).
+  0.1 (PyPI; they bring `lexapi-client` 0.5), `llama-index-core` 0.14.26,
+  `llama-index-llms-anthropic` 0.13.0 and `anthropic` 1.17.0 (`llama-index-llms-anthropic` 0.13.0
+  does not work with `anthropic` 2.x).
 
 ## Security
 

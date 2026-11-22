@@ -3,16 +3,13 @@
 A minimal retrieval-augmented generation (RAG) example over EU legislation with LangChain.
 
 Ask a question about the Digital Operational Resilience Act (DORA, Regulation (EU) 2022/2554). The
-official LexAPI retriever for LangChain, [`langchain-lexapi`](https://github.com/Lex-API/lexapi-langchain) (not public yet),
+official LexAPI retriever for LangChain, [`langchain-lexapi`](https://github.com/Lex-API/lexapi-langchain),
 fetches matching DORA articles, and a chat model answers from those passages only, citing each claim
 as `[1]`, `[2]`, ... The sources are printed after the answer, one line per passage, with the CELEX
 number, article and EUR-Lex link. It uses `langchain-core` and one chat model integration
 (`langchain-anthropic`); no vector store, no agent loop.
 
 Python 3.11 or later. The model is Anthropic's, through `langchain-anthropic`.
-
-This example installs `langchain-lexapi`, which is not published yet; until it is, the example —
-including `--dry-run` — can only be installed by people with access to that repository.
 
 ## The core
 
@@ -108,13 +105,7 @@ mock LexAPI and a fake model, so it stays in step with the adapter.
 
 ## Install
 
-`langchain-lexapi` version 0.1.0 is not on PyPI yet. `pyproject.toml` installs it from its
-repository, pinned to a commit, so installing this example needs that repository to be reachable.
-If you have access to that repository, `pip` uses your usual GitHub credentials for it.
-
-```
-langchain-lexapi @ git+https://github.com/Lex-API/lexapi-langchain@77b1befd49e361a07a5b522aff3c00fd6d98ebfe
-```
+`pyproject.toml` installs `langchain-lexapi` from PyPI (0.1.0 or later, below 0.2).
 
 ## Run it
 
@@ -201,8 +192,6 @@ whatever the local time zone, the dashboard link after any 401 and after credits
 the client closed after the run, the dry run, the snippet in "The core", the sample output below,
 and the output lines shared with the LlamaIndex example.
 Not covered by any test: the live API and a real model.
-Until the adapter's repository is public, these tests run locally only (`pip install -e .` needs
-access to it); the CI job checks whether it is reachable and skips with a notice when it is not.
 The tests and `--dry-run` need a checkout of the whole repository: the fixtures are in
 `offline/fixtures` at its root, and some tests compare this example with the other Python one.
 

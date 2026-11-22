@@ -142,7 +142,7 @@ not "no supporting text".
 ### The MCP route
 
 `--via mcp` runs the same loop but retrieves through the LexAPI MCP server instead of the SDK:
-`src/retrieve-mcp.ts` starts `@lexapi/mcp` (0.5.1) as a stdio child process and calls its
+`src/retrieve-mcp.ts` starts `@lexapi/mcp` (0.6.0) as a stdio child process and calls its
 `lex_semantic_legislation` tool. The steps after retrieval are the same code, with two differences
 in what they receive:
 

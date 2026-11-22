@@ -14,8 +14,7 @@
  * Strings from the server are put on one line (control characters and line
  * breaks become spaces) and capped: the message at 1,000 characters, the code,
  * a time or a link at 200 (`…` marks a cut). Anything shaped like a LexAPI key
- * is masked. Built on what `@lexapi/client` 0.4.0 exposes; later versions
- * expose the same fields.
+ * is masked. Built on what `@lexapi/client` 0.5.0 exposes.
  */
 import { CreditsExhaustedError, type LexAPIError, RateLimitedError } from "@lexapi/client";
 

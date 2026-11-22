@@ -3,7 +3,7 @@
 Ask about an EU act for a date: get the version LexAPI lists for that date and an answer from its passages with citations, and be told plainly where LexAPI has no text for that date.
 
 Name an act (the GDPR, Regulation (EU) 2016/679, by default), a date and, optionally, a provision.
-The official LexAPI tools for LlamaIndex, [`llama-index-tools-lexapi`](https://github.com/Lex-API/lexapi-llamaindex) (not public yet),
+The official LexAPI tools for LlamaIndex, [`llama-index-tools-lexapi`](https://github.com/Lex-API/lexapi-llamaindex),
 return the version LexAPI lists for that date and the provision's text for the date. The official
 retriever, `llama-index-retrievers-lexapi`, then fetches the act's passages matching your question,
 for the same date. A model answers from those passages only, citing each claim as `[1]`, `[2]`, ...
@@ -13,10 +13,6 @@ retrieval-augmented generation (RAG) with `llama-index-core` and one LLM integra
 (`llama-index-llms-anthropic`); no index, no embeddings, no agent loop.
 
 Python 3.11 or later. The model is Anthropic's, through `llama-index-llms-anthropic`.
-
-This example installs `llama-index-tools-lexapi` and `llama-index-retrievers-lexapi`, which are not
-published yet; until they are, the example — including `--dry-run` — can only be installed by people
-with access to their repository.
 
 ## The core
 
@@ -168,20 +164,13 @@ Source: CELEX 32016R0679, art_18, text for 2019-06-01 not established, https://e
 
 ## Install
 
-`llama-index-retrievers-lexapi` and `llama-index-tools-lexapi` version 0.1.0 are not on PyPI yet.
-`pyproject.toml` installs both from their repository, pinned to a commit, so installing this example
-needs that repository to be reachable. If you have access to it, `pip` uses your usual GitHub
-credentials for it.
+`pyproject.toml` installs `llama-index-retrievers-lexapi` and `llama-index-tools-lexapi` from PyPI
+(0.1.0 or later, below 0.2).
 
 `pyproject.toml` pins `anthropic` to 1.17.0: `llama-index-llms-anthropic` 0.13.0, its latest
 release, fails with `anthropic` 2.x before any request is sent. On an Intel Mac, it also pins
 `cryptography` below 49: `llama-index-llms-anthropic`
 needs it, and from 49.0.0 it ships macOS wheels for Apple silicon only.
-
-```
-llama-index-retrievers-lexapi @ git+https://github.com/Lex-API/lexapi-llamaindex@8e0bbb9f59546591808c609c9c59af78e43ffd37#subdirectory=llama-index-retrievers-lexapi
-llama-index-tools-lexapi @ git+https://github.com/Lex-API/lexapi-llamaindex@8e0bbb9f59546591808c609c9c59af78e43ffd37#subdirectory=llama-index-tools-lexapi
-```
 
 ## Run it
 
@@ -291,8 +280,6 @@ the dry run (and its refusal of another act), the
 snippet in "The core", the sample outputs and the notice block above, and the output lines shared
 with the LangChain example.
 Not covered by any test: the live API and a real model.
-Until the adapters' repository is public, these tests run locally only (`pip install -e .` needs
-access to it); the CI job checks whether it is reachable and skips with a notice when it is not.
 The tests and `--dry-run` need a checkout of the whole repository: the fixtures are in
 `offline/fixtures` at its root, and some tests compare this example with the other Python one.
 

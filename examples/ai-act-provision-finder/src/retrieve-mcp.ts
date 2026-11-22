@@ -20,7 +20,7 @@ import { isHitList, type LegislationHit, type LegislationSearch, type SearchOutc
 
 /** The largest text budget the tool accepts. */
 const MAX_CHARS = 200_000;
-/** What `@lexapi/mcp` 0.5.1 appends to a hit text it cut. */
+/** What `@lexapi/mcp` 0.6.0 appends to a hit text it cut. */
 const TRUNCATION_MARKER = / \u2026\[truncated: (\d+) more characters\]$/;
 
 /** The MCP tool reported an error: its own text is printed, on one line (the key masked; tool names are kept). */
