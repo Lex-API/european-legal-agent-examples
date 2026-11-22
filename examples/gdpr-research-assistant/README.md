@@ -97,12 +97,7 @@ an excerpt is quoted in context, or that the summary reads the sources correctly
 
 ## Install
 
-`lexapi-client` 0.5.0 is not on PyPI yet. `pyproject.toml` installs it from its repository, pinned
-to a commit, so installing this example needs `git`:
-
-```
-lexapi-client @ git+https://github.com/Lex-API/lexapi-python@e48dfdadf8fb4c2a05f4c6ec08f79146177a515e
-```
+`pyproject.toml` installs `lexapi-client` from PyPI (0.5.0 or later, below 0.6).
 
 ## Run it
 

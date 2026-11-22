@@ -9,11 +9,8 @@ description = "Example: EU law for a date, answered from cited passages, with Ll
 requires-python = ">=3.11"
 license = "MIT"
 dependencies = [
-  # Not on PyPI yet: installed from their repository, pinned to a commit.
-  # TODO(release): replace with "llama-index-retrievers-lexapi>=0.1.0,<0.2" and
-  # "llama-index-tools-lexapi>=0.1.0,<0.2" once 0.1.0 is on PyPI.
-  "llama-index-retrievers-lexapi @ git+https://github.com/Lex-API/lexapi-llamaindex@8e0bbb9f59546591808c609c9c59af78e43ffd37#subdirectory=llama-index-retrievers-lexapi",
-  "llama-index-tools-lexapi @ git+https://github.com/Lex-API/lexapi-llamaindex@8e0bbb9f59546591808c609c9c59af78e43ffd37#subdirectory=llama-index-tools-lexapi",
+  "llama-index-retrievers-lexapi>=0.1.0,<0.2",
+  "llama-index-tools-lexapi>=0.1.0,<0.2",
   "llama-index-core==0.14.26",
   "llama-index-llms-anthropic==0.13.0",
   # llama-index-llms-anthropic 0.13.0 (its latest release) builds its requests with types that
@@ -29,9 +26,6 @@ dev = ["pytest==9.2.0", "ruff==0.17.5", "mypy==2.4.1"]
 
 [project.scripts]
 law-on-a-date = "law_on_a_date.cli:main"
-
-[tool.hatch.metadata]
-allow-direct-references = true  # the git pins above
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/law_on_a_date"]

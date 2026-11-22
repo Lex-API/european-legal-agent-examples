@@ -9,9 +9,7 @@ description = "Example: answer questions about DORA from cited passages, with La
 requires-python = ">=3.11"
 license = "MIT"
 dependencies = [
-  # Not on PyPI yet: installed from its repository, pinned to a commit.
-  # TODO(release): replace with "langchain-lexapi>=0.1.0,<0.2" once 0.1.0 is on PyPI.
-  "langchain-lexapi @ git+https://github.com/Lex-API/lexapi-langchain@77b1befd49e361a07a5b522aff3c00fd6d98ebfe",
+  "langchain-lexapi>=0.1.0,<0.2",
   "langchain-core==1.8.3",
   "langchain-anthropic==1.7.11",
   "anthropic==2.10.0",
@@ -22,9 +20,6 @@ dev = ["pytest==9.2.0", "ruff==0.17.5", "mypy==2.4.1"]
 
 [project.scripts]
 dora-rag = "dora_rag.cli:main"
-
-[tool.hatch.metadata]
-allow-direct-references = true  # the git pin above
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/dora_rag"]
